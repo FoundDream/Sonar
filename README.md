@@ -105,8 +105,3 @@ uv sync --group dev
 uv run pytest
 uv run ruff check tests
 ```
-
-- 贡献指南：`CONTRIBUTING.md`
-- 安全报告：`SECURITY.md`
-- 行为准则：`CODE_OF_CONDUCT.md`
-- 规划路线：`ROADMAP.md`
