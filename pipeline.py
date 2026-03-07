@@ -30,43 +30,89 @@ STAGE_ORDER = ["fetch", "analyze", "plan", "research", "synthesize"]
 
 
 class Pipeline:
-    def __init__(self, llm: LLMClient, preset: str = "beginner", goal: str = "",
-                 force_orchestrator: bool = False):
+    def __init__(self, llm: LLMClient, mode: str = "learning", preset: str = "beginner",
+                 goal: str = ""):
         self.llm = llm
+        self.mode = mode
         self.preset = preset
         self.goal = goal
-        self.force_orchestrator = force_orchestrator
         self.run_id: str | None = None
         self.run_dir: str = OUTPUT_DIR
 
     def run(self, url: str, resume_from: str | None = None, run_id: str | None = None) -> str:
-        """Run the pipeline. Uses orchestrator when appropriate.
+        """Run the pipeline. Routes based on mode.
 
         Returns the output HTML path.
         """
         self._init_run_storage(resume_from=resume_from, run_id=run_id)
-        if resume_from or not self._should_use_orchestrator():
-            return self._run_fixed(url, resume_from)
-        return self._run_orchestrated(url)
+        if self.mode == "reading":
+            return self._run_reading(url, resume_from)
+        return self._run_fixed(url, resume_from)
 
-    def _should_use_orchestrator(self) -> bool:
-        return self.force_orchestrator
+    def _run_reading(self, url: str, resume_from: str | None = None) -> str:
+        """Reading mode: Fetch -> Analyze -> Render. No concept research."""
+        print("[Pipeline] 阅读报告模式")
 
-    def _run_orchestrated(self, url: str) -> str:
-        from orchestrator import Orchestrator
+        fetch_result: FetchResult | None = None
+        analysis: AnalysisResult | None = None
 
-        print("[Pipeline] 使用 Orchestrator 模式")
+        # Load cached stages if resuming
+        if resume_from == "synthesize":
+            # Reading mode: synthesize just re-renders from analyze
+            analysis = AnalysisResult.from_dict(
+                load_stage_output(self._stage_path("analyze"))
+            )
+        elif resume_from == "analyze":
+            fetch_result = FetchResult.from_dict(
+                load_stage_output(self._stage_path("fetch"))
+            )
+        elif resume_from and resume_from != "fetch":
+            # For reading mode, plan/research don't exist — fall back to analyze
+            analysis = AnalysisResult.from_dict(
+                load_stage_output(self._stage_path("analyze"))
+            )
 
-        def _persist_stage(stage_name: str, data: dict) -> None:
-            save_stage_output(data, self._stage_path(stage_name))
+        # Fetch
+        if not analysis and not fetch_result:
+            stage = FetchStage(self.llm)
+            result = stage.run(url)
+            if isinstance(result, dict) and "error" in result:
+                raise RuntimeError(result["error"])
+            fetch_result = result
+            save_stage_output(fetch_result.to_dict(), self._stage_path("fetch"))
 
-        orch = Orchestrator(self.llm, self.preset, self.goal, on_stage_output=_persist_stage)
-        report_data = orch.run(url)
+        # Analyze
+        if not analysis:
+            stage = AnalyzeStage(self.llm)
+            result = stage.run(fetch_result)
+            if isinstance(result, dict) and "error" in result:
+                raise RuntimeError(result["error"])
+            analysis = result
+            save_stage_output(analysis.to_dict(), self._stage_path("analyze"))
 
+        # Build reading report directly from analysis
+        report_data = self._build_reading_report(analysis)
         save_stage_output(report_data.to_dict(), self._stage_path("synthesize"))
+
         output_path = render_report(report_data.to_dict(), self._report_path())
         self._publish_latest_report(output_path)
         return output_path
+
+    @staticmethod
+    def _build_reading_report(analysis: AnalysisResult) -> ReportData:
+        """Assemble a reading report from analysis output. No concepts/research."""
+        sections = [{"type": "overview"}, {"type": "summary"}]
+        if analysis.article_analysis:
+            sections.append({"type": "analysis"})
+
+        return ReportData(
+            title=analysis.article_title,
+            source_url=analysis.url,
+            overview=analysis.overview,
+            summary=analysis.article_summary,
+            article_analysis=analysis.article_analysis,
+            sections=sections,
+        )
 
     def _run_fixed(self, url: str, resume_from: str | None = None) -> str:
         """Run the fixed pipeline, optionally resuming from a stage.
