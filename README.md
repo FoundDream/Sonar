@@ -28,18 +28,26 @@ uv run main.py https://example.com/some-article
 ## CLI 用法
 
 ```bash
-# 阅读报告
+# 阅读报告（摘要 + 观点拆解）
 uv run main.py <URL> --mode reading
 
-# 学习报告（默认）
+# 学习报告（默认，概念研究 + 学习路径）
 uv run main.py <URL>
+```
 
-# research 预设（学术论文导向）
+Learning 模式下的额外选项：
+
+```bash
+# 学术论文导向（关注方法论/关键发现/相关论文）
 uv run main.py <URL> --preset research
 
-# 自定义学习目标
+# 自定义学习目标（LLM 会据此筛选和排序概念）
 uv run main.py <URL> --goal "我想理解这篇文章里的系统设计权衡"
+```
 
+断点恢复：
+
+```bash
 # 从 analyze 阶段恢复（默认使用最近一次 run）
 uv run main.py --resume-from analyze
 
