@@ -15,7 +15,7 @@ def main():
     parser = argparse.ArgumentParser(
         description="Sonar - 帮你读懂任何文章的学习助手",
     )
-    parser.add_argument("url", nargs="?", help="文章 URL")
+    parser.add_argument("source", nargs="?", help="文章 URL 或本地文件路径（.pdf / .md / .txt / .html）")
     parser.add_argument("--mode", default="learning", choices=["reading", "learning"],
                         help="报告模式: reading=阅读报告, learning=概念学习 (default: learning)")
     parser.add_argument("--preset", default="beginner", choices=["beginner", "research"],
@@ -28,18 +28,17 @@ def main():
                         help="指定运行 ID（用于输出到 output/runs/<run_id>）")
     args = parser.parse_args()
 
-    # New pipeline path
-    if not args.url and not args.resume_from:
+    if not args.source and not args.resume_from:
         parser.print_help()
         sys.exit(1)
 
     llm = LLMClient()
-    url = args.url or ""
-    print(f"Sonar - 正在分析: {url or '(从缓存恢复)'}\n")
+    source = args.source or ""
+    print(f"Sonar - 正在分析: {source or '(从缓存恢复)'}\n")
 
     pipeline = Pipeline(llm, mode=args.mode, preset=args.preset, goal=args.goal)
     try:
-        output_path = pipeline.run(url, resume_from=args.resume_from, run_id=args.run_id or None)
+        output_path = pipeline.run(source, resume_from=args.resume_from, run_id=args.run_id or None)
     except (RuntimeError, ValueError) as e:
         print(f"\n错误: {e}")
         sys.exit(1)

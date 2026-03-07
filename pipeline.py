@@ -39,17 +39,18 @@ class Pipeline:
         self.run_id: str | None = None
         self.run_dir: str = OUTPUT_DIR
 
-    def run(self, url: str, resume_from: str | None = None, run_id: str | None = None) -> str:
+    def run(self, source: str, resume_from: str | None = None, run_id: str | None = None) -> str:
         """Run the pipeline. Routes based on mode.
 
+        source: URL or local file path.
         Returns the output HTML path.
         """
         self._init_run_storage(resume_from=resume_from, run_id=run_id)
         if self.mode == "reading":
-            return self._run_reading(url, resume_from)
-        return self._run_fixed(url, resume_from)
+            return self._run_reading(source, resume_from)
+        return self._run_fixed(source, resume_from)
 
-    def _run_reading(self, url: str, resume_from: str | None = None) -> str:
+    def _run_reading(self, source: str, resume_from: str | None = None) -> str:
         """Reading mode: Fetch -> Analyze -> Render. No concept research."""
         print("[Pipeline] 阅读报告模式")
 
@@ -58,7 +59,6 @@ class Pipeline:
 
         # Load cached stages if resuming
         if resume_from == "synthesize":
-            # Reading mode: synthesize just re-renders from analyze
             analysis = AnalysisResult.from_dict(
                 load_stage_output(self._stage_path("analyze"))
             )
@@ -67,7 +67,6 @@ class Pipeline:
                 load_stage_output(self._stage_path("fetch"))
             )
         elif resume_from and resume_from != "fetch":
-            # For reading mode, plan/research don't exist — fall back to analyze
             analysis = AnalysisResult.from_dict(
                 load_stage_output(self._stage_path("analyze"))
             )
@@ -75,7 +74,7 @@ class Pipeline:
         # Fetch
         if not analysis and not fetch_result:
             stage = FetchStage(self.llm)
-            result = stage.run(url)
+            result = stage.run(source)
             if isinstance(result, dict) and "error" in result:
                 raise RuntimeError(result["error"])
             fetch_result = result
@@ -114,12 +113,11 @@ class Pipeline:
             sections=sections,
         )
 
-    def _run_fixed(self, url: str, resume_from: str | None = None) -> str:
+    def _run_fixed(self, source: str, resume_from: str | None = None) -> str:
         """Run the fixed pipeline, optionally resuming from a stage.
 
         Returns the output HTML path.
         """
-        # Determine which stages to skip
         if resume_from:
             if resume_from not in STAGE_ORDER:
                 raise ValueError(f"Unknown stage: {resume_from}. Valid: {STAGE_ORDER}")
@@ -127,16 +125,14 @@ class Pipeline:
         else:
             start_idx = 0
 
-        # Stage outputs
         fetch_result: FetchResult | None = None
         analysis: AnalysisResult | None = None
         plan: ResearchPlan | None = None
         research: ResearchResult | None = None
         report_data: ReportData | None = None
 
-        # Load prior stage outputs if resuming
         if start_idx > 0:
-            url = self._load_url(url)
+            source = self._load_source(source)
 
         if start_idx > STAGE_ORDER.index("fetch"):
             fetch_result = FetchResult.from_dict(
@@ -162,7 +158,7 @@ class Pipeline:
         for stage_name in STAGE_ORDER[start_idx:]:
             if stage_name == "fetch":
                 stage = FetchStage(self.llm)
-                result = stage.run(url)
+                result = stage.run(source)
                 if isinstance(result, dict) and "error" in result:
                     raise RuntimeError(result["error"])
                 fetch_result = result
@@ -250,10 +246,10 @@ class Pipeline:
             content = f.read().strip()
         return content or None
 
-    def _load_url(self, url: str) -> str:
-        """Try to get URL from prior stage outputs when resuming."""
-        if url:
-            return url
+    def _load_source(self, source: str) -> str:
+        """Try to get source from prior stage outputs when resuming."""
+        if source:
+            return source
         for stage in ["fetch", "analyze", "research"]:
             path = self._stage_path(stage)
             if os.path.exists(path):
@@ -261,6 +257,6 @@ class Pipeline:
                 if "url" in data:
                     return data["url"]
         raise ValueError(
-            "Cannot determine URL when resuming. "
-            "Provide a URL or ensure prior stage outputs exist."
+            "Cannot determine source when resuming. "
+            "Provide a source or ensure prior stage outputs exist."
         )

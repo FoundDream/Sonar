@@ -28,7 +28,7 @@ class SectionSpec:
 @dataclass
 class FetchResult:
     """Fetch 阶段输出。"""
-    url: str
+    url: str  # URL 或本地文件路径
     title: str = ""
     content: str = ""
     author: str = ""
@@ -36,6 +36,7 @@ class FetchResult:
     description: str = ""
     word_count: int = 0
     was_truncated: bool = False
+    source_type: str = "url"  # "url" | "file"
 
     def to_dict(self) -> dict:
         return {
@@ -47,6 +48,7 @@ class FetchResult:
             "description": self.description,
             "word_count": self.word_count,
             "was_truncated": self.was_truncated,
+            "source_type": self.source_type,
         }
 
     @classmethod

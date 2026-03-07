@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pipeline
 from pipeline import Pipeline
+from stages.fetch import FetchStage, is_local_file
 from stages.models import (
     AnalysisResult,
     FetchResult,
@@ -48,12 +49,12 @@ def test_resume_reuses_latest_run(monkeypatch, tmp_path: Path) -> None:
     assert p.run_dir.endswith("output/runs/saved-run")
 
 
-def test_load_url_from_previous_stage(tmp_path: Path) -> None:
+def test_load_source_from_previous_stage(tmp_path: Path) -> None:
     p = Pipeline(llm=None)  # type: ignore[arg-type]
     p.run_dir = str(tmp_path)
     save_stage_output({"url": "https://example.com/article"}, str(tmp_path / "fetch.json"))
 
-    assert p._load_url("") == "https://example.com/article"
+    assert p._load_source("") == "https://example.com/article"
 
 
 def test_build_reading_report() -> None:
@@ -80,3 +81,42 @@ def test_build_reading_report() -> None:
     # Sections: overview, summary, analysis
     section_types = [s["type"] for s in report.sections]
     assert section_types == ["overview", "summary", "analysis"]
+
+
+def test_is_local_file(tmp_path: Path) -> None:
+    # URL → False
+    assert is_local_file("https://example.com/article") is False
+    assert is_local_file("http://example.com/article") is False
+
+    # Non-existent path → False
+    assert is_local_file("/nonexistent/file.md") is False
+
+    # Existing file → True
+    f = tmp_path / "test.md"
+    f.write_text("hello", encoding="utf-8")
+    assert is_local_file(str(f)) is True
+
+
+def test_fetch_local_text_file(tmp_path: Path) -> None:
+    f = tmp_path / "article.md"
+    f.write_text("# My Article\n\nSome interesting content here.", encoding="utf-8")
+
+    stage = FetchStage(llm=None)
+    result = stage.run(str(f))
+
+    assert isinstance(result, FetchResult)
+    assert result.title == "article.md"
+    assert "interesting content" in result.content
+    assert result.source_type == "file"
+
+
+def test_fetch_local_unsupported_extension(tmp_path: Path) -> None:
+    f = tmp_path / "data.csv"
+    f.write_text("a,b,c", encoding="utf-8")
+
+    stage = FetchStage(llm=None)
+    result = stage.run(str(f))
+
+    assert isinstance(result, dict)
+    assert "error" in result
+    assert ".csv" in result["error"]
