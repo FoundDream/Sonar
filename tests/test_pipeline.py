@@ -1,6 +1,5 @@
 from pathlib import Path
 
-import orchestrator
 import pipeline
 from pipeline import Pipeline
 from stages.models import (
@@ -57,80 +56,27 @@ def test_load_url_from_previous_stage(tmp_path: Path) -> None:
     assert p._load_url("") == "https://example.com/article"
 
 
-def test_orchestrator_build_stage_snapshots_prefers_primary_url() -> None:
-    url_a = "https://example.com/a"
-    url_b = "https://example.com/b"
-
-    state = orchestrator.OrchestratorState(primary_url=url_a)
-    state.fetched[url_b] = FetchResult(url=url_b, title="B")
-    state.fetched[url_a] = FetchResult(url=url_a, title="A")
-    state.analyses[url_a] = AnalysisResult(
-        url=url_a,
-        article_title="Article A",
-        article_summary="Summary A",
-        concepts=["alpha"],
+def test_build_reading_report() -> None:
+    analysis = AnalysisResult(
+        url="https://example.com/article",
+        article_title="Test Article",
+        article_summary="This is a summary.",
+        overview={"topic": "testing", "difficulty": "beginner"},
+        article_analysis={"main_thesis": "Testing is good."},
+        concepts=["concept1", "concept2"],
     )
-    state.analyses[url_b] = AnalysisResult(
-        url=url_b,
-        article_title="Article B",
-        article_summary="Summary B",
-        concepts=["beta"],
-    )
-    state.all_concepts = ["alpha", "beta"]
-    state.plan = ResearchPlan(preset="beginner")
-    state.research_result = ResearchResult(url=url_a, concepts=["alpha"], findings={})
-    state.report_data = ReportData(title="Report A", source_url=url_a)
 
-    orch = orchestrator.Orchestrator(llm=None)  # type: ignore[arg-type]
-    snapshots = orch._build_stage_snapshots(state)
+    report = Pipeline._build_reading_report(analysis)
 
-    assert snapshots["fetch"]["url"] == url_a
-    assert snapshots["analyze"]["url"] == url_a
-    assert snapshots["analyze"]["concepts"] == ["alpha", "beta"]
-    assert "[Article A] Summary A" in snapshots["analyze"]["article_summary"]
-    assert "[Article B] Summary B" in snapshots["analyze"]["article_summary"]
-    assert set(snapshots) == {"fetch", "analyze", "plan", "research", "synthesize"}
-
-
-def test_run_orchestrated_persists_stage_outputs(monkeypatch, tmp_path: Path) -> None:
-    _patch_output_paths(monkeypatch, tmp_path)
-    p = Pipeline(llm=None)  # type: ignore[arg-type]
-    p._init_run_storage(resume_from=None, run_id="orch-run")
-
-    class FakeOrchestrator:
-        def __init__(self, llm, preset, goal, on_stage_output=None):
-            self.on_stage_output = on_stage_output
-
-        def run(self, url: str) -> ReportData:
-            self.on_stage_output("fetch", FetchResult(url=url, title="T").to_dict())
-            analysis = AnalysisResult(
-                url=url,
-                article_title="T",
-                article_summary="S",
-                concepts=["c1"],
-            )
-            self.on_stage_output(
-                "analyze",
-                analysis.to_dict(),
-            )
-            self.on_stage_output("plan", ResearchPlan(preset="beginner").to_dict())
-            research = ResearchResult(
-                url=url,
-                article_title="T",
-                concepts=["c1"],
-                findings={"c1": {}},
-            )
-            self.on_stage_output(
-                "research",
-                research.to_dict(),
-            )
-            report = ReportData(title="R", source_url=url, summary="Done")
-            self.on_stage_output("synthesize", report.to_dict())
-            return report
-
-    monkeypatch.setattr(orchestrator, "Orchestrator", FakeOrchestrator)
-
-    output_path = p._run_orchestrated("https://example.com/orch")
-    assert Path(output_path).is_file()
-    for stage in ["fetch", "analyze", "plan", "research", "synthesize"]:
-        assert Path(p._stage_path(stage)).is_file()
+    assert report.title == "Test Article"
+    assert report.source_url == "https://example.com/article"
+    assert report.summary == "This is a summary."
+    assert report.overview == {"topic": "testing", "difficulty": "beginner"}
+    assert report.article_analysis == {"main_thesis": "Testing is good."}
+    # Reading report should have no concepts/prerequisites/learning_path
+    assert report.prerequisites == []
+    assert report.concepts == []
+    assert report.learning_path == []
+    # Sections: overview, summary, analysis
+    section_types = [s["type"] for s in report.sections]
+    assert section_types == ["overview", "summary", "analysis"]
