@@ -22,3 +22,6 @@ notes/
 .pytest_cache/
 .ruff_cache/
 .coverage
+
+# AI
+.claude/
