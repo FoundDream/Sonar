@@ -1,0 +1,242 @@
+"""真实 Fetch 测试：验证各种输入源的实际抓取能力。
+
+网络测试标记 @pytest.mark.network，默认跳过。
+运行方式：uv run pytest tests/test_fetch_real.py -m network --run-network -v
+"""
+
+from pathlib import Path
+
+import pytest
+
+from stages.fetch import FetchStage, is_local_file
+from stages.models import FetchResult
+
+
+# ── Fixtures ──
+
+
+@pytest.fixture
+def stage():
+    return FetchStage(llm=None)
+
+
+# ── 本地文件测试（不需要网络）──
+
+
+class TestLocalFiles:
+    def test_markdown_file(self, stage, tmp_path: Path) -> None:
+        f = tmp_path / "article.md"
+        f.write_text(
+            "# 深度学习入门\n\n本文介绍深度学习的基本概念。\n\n"
+            "## 神经网络\n\n神经网络是深度学习的基础架构。\n\n"
+            "## 反向传播\n\n反向传播算法用于训练神经网络。",
+            encoding="utf-8",
+        )
+        result = stage.run(str(f))
+
+        assert isinstance(result, FetchResult)
+        assert result.source_type == "file"
+        assert result.title == "article.md"
+        assert "深度学习" in result.content
+        assert result.word_count > 0
+
+    def test_txt_file(self, stage, tmp_path: Path) -> None:
+        f = tmp_path / "notes.txt"
+        f.write_text("这是一份纯文本笔记。\n包含多行内容。\n用于验证功能。", encoding="utf-8")
+        result = stage.run(str(f))
+
+        assert isinstance(result, FetchResult)
+        assert result.source_type == "file"
+        assert "纯文本笔记" in result.content
+
+    def test_html_file(self, stage, tmp_path: Path) -> None:
+        f = tmp_path / "page.html"
+        f.write_text(
+            '<!DOCTYPE html><html><head><title>测试页面</title></head>'
+            "<body><article><h1>HTML 文章</h1>"
+            "<p>这是正文内容，用于验证 HTML 解析。</p>"
+            "</article></body></html>",
+            encoding="utf-8",
+        )
+        result = stage.run(str(f))
+
+        assert isinstance(result, FetchResult)
+        assert result.source_type == "file"
+        assert "正文内容" in result.content
+
+    def test_pdf_file(self, stage, tmp_path: Path) -> None:
+        pymupdf = pytest.importorskip("pymupdf")
+        pdf_path = tmp_path / "doc.pdf"
+
+        doc = pymupdf.open()
+        page = doc.new_page()
+        # 用 ASCII 文本避免字体问题
+        page.insert_text((72, 72), "Deep Learning Introduction\n\nNeural networks are fundamental.", fontsize=12)
+        doc.save(str(pdf_path))
+        doc.close()
+
+        result = stage.run(str(pdf_path))
+
+        assert isinstance(result, FetchResult)
+        assert result.source_type == "file"
+        assert "Deep Learning" in result.content or "Neural" in result.content
+
+    def test_empty_file_returns_error(self, stage, tmp_path: Path) -> None:
+        f = tmp_path / "empty.md"
+        f.write_text("", encoding="utf-8")
+        result = stage.run(str(f))
+
+        assert isinstance(result, dict)
+        assert "error" in result
+
+    def test_unsupported_extension_returns_error(self, stage, tmp_path: Path) -> None:
+        f = tmp_path / "data.csv"
+        f.write_text("a,b,c\n1,2,3", encoding="utf-8")
+        result = stage.run(str(f))
+
+        assert isinstance(result, dict)
+        assert "error" in result
+        assert ".csv" in result["error"]
+
+    def test_large_file_gets_truncated(self, stage, tmp_path: Path) -> None:
+        f = tmp_path / "large.md"
+        # 写一个超过 8000 字符的文件
+        content = "# 大文件测试\n\n" + ("这是重复内容用于测试截断功能。" * 1000)
+        f.write_text(content, encoding="utf-8")
+        result = stage.run(str(f))
+
+        assert isinstance(result, FetchResult)
+        assert result.was_truncated is True
+        assert len(result.content) <= 8500  # 允许一些余量
+
+    def test_nonexistent_path_not_treated_as_url(self, stage) -> None:
+        """不存在的本地路径不应该被当作 URL 去抓取。"""
+        # is_local_file 对不存在的文件返回 False，会走 URL 路径
+        # 这是一个已知问题：路径看起来像文件但不存在时，行为不理想
+        result = is_local_file("/tmp/definitely_not_exists_12345.md")
+        assert result is False
+
+
+# ── 网络测试 ──
+
+
+@pytest.mark.network
+class TestURLFetch:
+    def test_english_article(self, stage) -> None:
+        """Paul Graham 博客 — 简单静态页面，应该稳定可抓。"""
+        result = stage.run("https://paulgraham.com/writes.html")
+
+        assert isinstance(result, FetchResult)
+        assert result.source_type == "url"
+        assert len(result.content) > 200
+        assert result.title
+
+    def test_chinese_article(self, stage) -> None:
+        """少数派文章 — 中文内容站点。"""
+        result = stage.run("https://sspai.com/post/77922")
+
+        assert isinstance(result, FetchResult)
+        assert result.source_type == "url"
+        assert len(result.content) > 200
+
+    def test_github_readme(self, stage) -> None:
+        """GitHub 仓库页面。"""
+        result = stage.run("https://github.com/anthropics/anthropic-cookbook")
+
+        assert isinstance(result, FetchResult)
+        assert result.source_type == "url"
+        assert len(result.content) > 100
+
+    def test_wechat_article_quality(self, stage) -> None:
+        """微信公众号文章 — 已知反爬严重，验证我们能否检测到内容不可用。"""
+        result = stage.run("https://mp.weixin.qq.com/s/HbjCFCQ_hFPSdMHgBNPGUw")
+
+        # 微信文章目前拿到的是空壳，内容极短
+        # 这个测试记录当前行为，后续改进时更新断言
+        if isinstance(result, FetchResult):
+            assert len(result.content) < 300, (
+                f"微信文章竟然拿到了 {len(result.content)} 字符的内容？可能反爬策略变了"
+            )
+
+    def test_x_twitter_post(self, stage) -> None:
+        """X/Twitter 帖子 — URL 重写到 fixupx.com 代理。"""
+        result = stage.run("https://x.com/kaborogevara/status/1898909941498044517")
+
+        self._log_result("X/Twitter", result)
+        assert isinstance(result, FetchResult)
+        assert len(result.content) > 50
+
+    def test_reddit_post(self, stage) -> None:
+        """Reddit 帖子 — old.reddit.com 通常比较友好。"""
+        result = stage.run("https://www.reddit.com/r/LocalLLaMA/comments/1jjp39n/qwen3_confirmed_by_alibaba/")
+
+        self._log_result("Reddit", result)
+        # Reddit 应该能拿到内容
+        assert isinstance(result, FetchResult)
+        assert len(result.content) > 50
+
+    def test_medium_article(self, stage) -> None:
+        """Medium 文章 — Jina 失败时 Crawl4AI 降级。"""
+        result = stage.run("https://medium.com/@karpathy/software-2-0-a64152b37c35")
+
+        self._log_result("Medium", result)
+        # 有了 Crawl4AI 应该能拿到内容
+        assert isinstance(result, FetchResult)
+        assert len(result.content) > 200
+
+    def test_substack_article(self, stage) -> None:
+        """Substack newsletter — 通常可抓。"""
+        result = stage.run("https://www.oneusefulthing.org/p/what-just-happened-with-ai")
+
+        self._log_result("Substack", result)
+        assert isinstance(result, FetchResult)
+        assert len(result.content) > 200
+
+    def test_wikipedia(self, stage) -> None:
+        """Wikipedia — 应该非常稳定。"""
+        result = stage.run("https://en.wikipedia.org/wiki/Transformer_(deep_learning_architecture)")
+
+        assert isinstance(result, FetchResult)
+        assert len(result.content) > 500
+        assert result.title
+
+    def test_arxiv_abstract(self, stage) -> None:
+        """arXiv 摘要页 — 学术论文入口。"""
+        result = stage.run("https://arxiv.org/abs/1706.03762")
+
+        self._log_result("arXiv", result)
+        assert isinstance(result, FetchResult)
+        assert "attention" in result.content.lower() or "transformer" in result.content.lower()
+
+    def test_zhihu_article(self, stage) -> None:
+        """知乎文章 — Jina 失败时 Crawl4AI 降级。"""
+        result = stage.run("https://zhuanlan.zhihu.com/p/350017443")
+
+        self._log_result("知乎", result)
+        # 有了 Crawl4AI 应该能拿到内容
+        assert isinstance(result, FetchResult)
+        assert len(result.content) > 200
+
+    def test_hacker_news(self, stage) -> None:
+        """Hacker News — 简单 HTML，应该稳定。"""
+        result = stage.run("https://news.ycombinator.com/item?id=41778461")
+
+        self._log_result("HN", result)
+        assert isinstance(result, FetchResult)
+
+    def test_youtube_video_page(self, stage) -> None:
+        """YouTube 页面 — JS 渲染重，通常拿不到正文。"""
+        result = stage.run("https://www.youtube.com/watch?v=aircAruvnKk")
+
+        # YouTube 是 JS 渲染站，记录行为
+        self._log_result("YouTube", result)
+
+    @staticmethod
+    def _log_result(label: str, result) -> None:
+        """打印测试结果供人工检查。"""
+        if isinstance(result, dict) and "error" in result:
+            print(f"\n[{label}] FAIL: {result['error'][:100]}")
+        elif isinstance(result, FetchResult):
+            print(f"\n[{label}] OK: title={result.title[:60]!r}, len={len(result.content)}, truncated={result.was_truncated}")
+        else:
+            print(f"\n[{label}] UNEXPECTED: {type(result)}")

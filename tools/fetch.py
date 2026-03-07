@@ -1,15 +1,16 @@
-"""内容抓取工具：Jina Reader 优先 + 本地降级链。
+"""内容抓取工具：Jina Reader 优先 + Crawl4AI 降级链。
 
 主路径:
   Jina Reader (r.jina.ai) — 干净 markdown，自带 JS 渲染 / 反爬 / PDF 支持
 
 降级路径 (Jina 不可用时):
-  httpx → Content-Type 路由
-    PDF  → pymupdf 提取
-    HTML → trafilatura(markdown) → 质量检查 → playwright 降级
+  Crawl4AI — headless Chromium，处理 JS 渲染 / 反爬站点
+  httpx — 轻量 fallback（PDF / 简单静态页）
 """
 
+import asyncio
 import os
+import re
 import time
 from urllib.parse import urlparse
 
@@ -30,6 +31,29 @@ _HEADERS = {
 _MAX_RETRIES = 2
 _RETRY_DELAYS = [1, 3]
 _MIN_CONTENT_LEN = 100
+
+
+# ── URL 预处理 ──
+
+_URL_REWRITES: list[tuple[re.Pattern, str, str]] = [
+    # Reddit → old.reddit.com（更简单的 HTML，更少反爬）
+    (re.compile(r"https?://(www\.)?reddit\.com"), "reddit.com", "old.reddit.com"),
+    # Twitter/X → fixupx.com 代理（提供可抓取的元数据）
+    (re.compile(r"https?://(www\.)?x\.com"), "x.com", "fixupx.com"),
+    (re.compile(r"https?://(www\.)?twitter\.com"), "twitter.com", "fixupx.com"),
+]
+
+
+def _rewrite_url(url: str) -> str:
+    """对已知难抓的站点做 URL 重写。"""
+    for pattern, old, new in _URL_REWRITES:
+        if pattern.match(url):
+            # 去掉 www. 前缀再替换，避免双重替换
+            new_url = re.sub(r"(https?://)(?:www\.)?" + re.escape(old), r"\1" + new, url, count=1)
+            if new_url != url:
+                print(f"  [重写] {url} → {new_url}")
+            return new_url
+    return url
 
 
 # ── 重试 ──
@@ -93,7 +117,59 @@ def _fetch_jina(url: str) -> dict:
     }
 
 
-# ── 本地 HTTP 层 ──
+# ── Crawl4AI（降级路径）──
+
+def _fetch_crawl4ai(url: str) -> dict:
+    """Crawl4AI: headless Chromium 抓取，处理 JS 渲染和反爬。"""
+    try:
+        from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig
+    except (ImportError, Exception) as e:
+        return make_error(f"crawl4ai 不可用: {e}", "config", retryable=False)
+
+    async def _crawl():
+        browser_cfg = BrowserConfig(headless=True, verbose=False)
+        run_cfg = CrawlerRunConfig(
+            word_count_threshold=50,
+            page_timeout=30000,
+            wait_until="networkidle",
+        )
+        async with AsyncWebCrawler(config=browser_cfg) as crawler:
+            result = await crawler.arun(url, config=run_cfg)
+            return result
+
+    try:
+        result = asyncio.run(_crawl())
+    except Exception as e:
+        return make_error(f"Crawl4AI 失败: {e}", "browser", retryable=False)
+
+    if not result.success:
+        return make_error(f"Crawl4AI 抓取失败: {result.error_message}", "browser", retryable=False)
+
+    # 优先用 markdown，fallback 到 extracted content
+    content = result.markdown_v2.raw_markdown if hasattr(result, "markdown_v2") and result.markdown_v2 else ""
+    if not content:
+        content = result.markdown or ""
+    if not content:
+        content = result.extracted_content or ""
+
+    if len(content.strip()) < _MIN_CONTENT_LEN:
+        return make_error(f"Crawl4AI 内容过短({len(content.strip())}字)", "parse", retryable=False)
+
+    title = ""
+    if result.metadata:
+        title = result.metadata.get("title", "") or ""
+
+    return {
+        "title": title,
+        "content": content,
+        "description": "",
+        "author": "",
+        "date": "",
+        "method": "crawl4ai",
+    }
+
+
+# ── httpx 轻量请求 ──
 
 def _httpx_get(url: str) -> httpx.Response | dict:
     """httpx GET，返回 Response 或 error dict。"""
@@ -110,30 +186,6 @@ def _httpx_get(url: str) -> httpx.Response | dict:
         return make_error(f"HTTP {code}: {e}", "http_5xx", retryable=True)
     except httpx.HTTPError as e:
         return make_error(f"网络错误: {e}", "network", retryable=True)
-
-
-def _fetch_playwright(url: str) -> str | dict:
-    """Playwright JS 渲染。可选依赖，未安装则跳过。"""
-    try:
-        from playwright.sync_api import sync_playwright
-    except ImportError:
-        return make_error(
-            "playwright 未安装，跳过 JS 渲染。"
-            "安装: uv add playwright && playwright install chromium",
-            "config", retryable=False,
-        )
-    try:
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            try:
-                page = browser.new_page(user_agent=_HEADERS["User-Agent"])
-                page.goto(url, wait_until="networkidle", timeout=30_000)
-                html = page.content()
-            finally:
-                browser.close()
-            return html
-    except Exception as e:
-        return make_error(f"Playwright 失败: {e}", "browser", retryable=False)
 
 
 # ── PDF 提取 ──
@@ -166,50 +218,56 @@ def _extract_pdf(data: bytes) -> dict:
     return {"title": title, "content": content, "method": "pdf"}
 
 
-# ── 本地降级链 ──
+# ── 降级链 ──
 
-def _fetch_local(url: str) -> dict:
-    """本地抓取: httpx → PDF/HTML 路由 → playwright 降级。"""
+def _fetch_fallback(url: str) -> dict:
+    """降级抓取: 先尝试 httpx(PDF) → Crawl4AI(JS渲染+反爬)。"""
+    # 先用轻量 httpx 试一下，主要为了 PDF 检测
     resp = _with_retry(_httpx_get, url)
     httpx_ok = isinstance(resp, httpx.Response)
 
     if httpx_ok:
-        # PDF
+        # PDF → pymupdf
         if _is_pdf_response(resp, url):
             print("  [抓取] 检测到 PDF")
             return _extract_pdf(resp.content)
 
-        # HTML → trafilatura markdown
+        # HTML → trafilatura
         extracted = extract_content(resp.text, url)
         if len(extracted["content"]) >= _MIN_CONTENT_LEN:
             return {**extracted, "method": "httpx"}
-        print(f"  [降级] 内容过短({len(extracted['content'])}字)，尝试 JS 渲染...")
+        print(f"  [降级] httpx 内容过短({len(extracted['content'])}字)，尝试 Crawl4AI...")
     else:
-        print(f"  [降级] httpx 失败({resp['error_type']})，尝试 JS 渲染...")
+        print(f"  [降级] httpx 失败({resp['error_type']})，尝试 Crawl4AI...")
 
-    # Playwright
-    html_pw = _fetch_playwright(url)
-    if isinstance(html_pw, str):
-        return {**extract_content(html_pw, url), "method": "playwright"}
+    # Crawl4AI — headless browser
+    crawl_result = _fetch_crawl4ai(url)
+    if "error" not in crawl_result:
+        return crawl_result
 
-    # httpx 拿到了 HTML 但内容短 → 勉强用
+    # Crawl4AI 也失败了，用 httpx 短内容勉强兜底
     if httpx_ok:
-        print("  [警告] JS 渲染不可用，使用短内容")
-        return {**extract_content(resp.text, url), "method": "httpx"}
+        extracted = extract_content(resp.text, url)
+        if extracted["content"].strip():
+            print("  [警告] Crawl4AI 不可用，使用 httpx 短内容")
+            return {**extracted, "method": "httpx"}
 
-    return resp  # error dict
+    return crawl_result  # error dict
 
 
 # ── 统一入口 ──
 
 def _fetch(url: str) -> dict:
-    """Jina 优先 → 本地降级。返回含 content 的 dict 或 error dict。"""
+    """Jina 优先 → 降级链。返回含 content 的 dict 或 error dict。"""
+    # URL 重写
+    url = _rewrite_url(url)
+
     result = _with_retry(_fetch_jina, url)
     if "error" not in result:
         return result
-    print(f"  [降级] Jina: {result['error'][:60]}，本地抓取...")
+    print(f"  [降级] Jina: {result['error'][:60]}，降级抓取...")
 
-    return _fetch_local(url)
+    return _fetch_fallback(url)
 
 
 # ── 公开接口 ──
