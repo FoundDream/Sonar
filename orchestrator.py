@@ -1,6 +1,7 @@
 """Orchestrator：LLM 驱动的 ReAct 循环，替代固定 pipeline。"""
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from agent.prompts import ORCHESTRATOR_PROMPT, ORCHESTRATOR_TOOLS
@@ -149,7 +150,11 @@ def tool_search_web(state: OrchestratorState, llm: LLMClient, query: str) -> str
     return "\n".join(lines) or "无搜索结果"
 
 
-def tool_research(state: OrchestratorState, llm: LLMClient, concepts: list[str] | None = None) -> str:
+def tool_research(
+    state: OrchestratorState,
+    llm: LLMClient,
+    concepts: list[str] | None = None,
+) -> str:
     if not state.analyses:
         return "错误: 必须先分析至少一篇文章。"
 
@@ -222,10 +227,69 @@ _TOOL_DISPATCH = {
 # ── Orchestrator class ──
 
 class Orchestrator:
-    def __init__(self, llm: LLMClient, preset: str = "beginner", goal: str = ""):
+    def __init__(
+        self,
+        llm: LLMClient,
+        preset: str = "beginner",
+        goal: str = "",
+        on_stage_output: Callable[[str, dict], None] | None = None,
+    ):
         self.llm = llm
         self.preset = preset
         self.goal = goal
+        self.on_stage_output = on_stage_output
+
+    def _build_stage_snapshots(self, state: OrchestratorState) -> dict[str, dict]:
+        snapshots: dict[str, dict] = {}
+
+        primary_fetch = state.fetched.get(state.primary_url)
+        if not primary_fetch and state.fetched:
+            primary_fetch = next(iter(state.fetched.values()))
+        if primary_fetch:
+            snapshots["fetch"] = primary_fetch.to_dict()
+
+        primary_analysis = state.analyses.get(state.primary_url)
+        if not primary_analysis and state.analyses:
+            primary_analysis = next(iter(state.analyses.values()))
+
+        if primary_analysis:
+            summaries = [
+                f"[{analysis.article_title or url}] {analysis.article_summary}"
+                for url, analysis in state.analyses.items()
+            ]
+            if len(summaries) > 1:
+                merged_summary = "\n\n".join(summaries)
+            else:
+                merged_summary = primary_analysis.article_summary
+            if state.all_concepts:
+                concepts = list(state.all_concepts)
+            else:
+                concepts = list(primary_analysis.concepts)
+            snapshots["analyze"] = AnalysisResult(
+                url=primary_analysis.url,
+                article_title=primary_analysis.article_title,
+                article_summary=merged_summary,
+                overview=primary_analysis.overview,
+                article_analysis=primary_analysis.article_analysis,
+                concepts=concepts,
+            ).to_dict()
+
+        if state.plan:
+            snapshots["plan"] = state.plan.to_dict()
+
+        if state.research_result:
+            snapshots["research"] = state.research_result.to_dict()
+
+        if state.report_data:
+            snapshots["synthesize"] = state.report_data.to_dict()
+
+        return snapshots
+
+    def _emit_stage_outputs(self, state: OrchestratorState) -> None:
+        if not self.on_stage_output:
+            return
+        for stage_name, data in self._build_stage_snapshots(state).items():
+            self.on_stage_output(stage_name, data)
 
     def run(self, url: str) -> ReportData:
         state = OrchestratorState(
@@ -293,7 +357,8 @@ class Orchestrator:
                     })
                     continue
 
-                print(f"[Orchestrator] 调用工具: {name}({json.dumps(args, ensure_ascii=False)[:80]})")
+                tool_args_preview = json.dumps(args, ensure_ascii=False)[:80]
+                print(f"[Orchestrator] 调用工具: {name}({tool_args_preview})")
 
                 handler = _TOOL_DISPATCH.get(name)
                 if handler is None:
@@ -306,6 +371,7 @@ class Orchestrator:
                     "tool_call_id": call_id,
                     "content": result,
                 })
+                self._emit_stage_outputs(state)
 
                 if result == _DONE_SENTINEL:
                     done = True
@@ -318,7 +384,9 @@ class Orchestrator:
             # Force synthesize and finish if we have research but no report
             if state.research_result and not state.report_data:
                 tool_synthesize(state, self.llm)
+                self._emit_stage_outputs(state)
             if not state.report_data:
                 raise RuntimeError("Orchestrator 未能在限定轮次内完成报告")
 
+        self._emit_stage_outputs(state)
         return state.report_data

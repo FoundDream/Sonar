@@ -147,7 +147,11 @@ SEARCH_TOOL = {
     "type": "function",
     "function": {
         "name": "search",
-        "description": "搜索指定关键词，返回 AI 摘要和 5 条结果。每条结果含 snippet（600字）、domain、published_date、relevance_score。优先参考 snippet 内容和 relevance_score 判断资料质量。",
+        "description": (
+            "搜索指定关键词，返回 AI 摘要和 5 条结果。每条结果含 "
+            "snippet（600字）、domain、published_date、relevance_score。"
+            "优先参考 snippet 内容和 relevance_score 判断资料质量。"
+        ),
         "parameters": {
             "type": "object",
             "properties": {

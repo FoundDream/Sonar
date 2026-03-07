@@ -34,11 +34,14 @@ dev = [
 ]
 
 [tool.ruff]
-line-length = 100
+line-length = 120
 target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+"agent/prompts.py" = ["E501"]
 
 [tool.pytest.ini_options]
 addopts = "-q"

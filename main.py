@@ -5,13 +5,13 @@ import sys
 
 from dotenv import load_dotenv
 
-load_dotenv()
-
 from llm.client import LLMClient
 from pipeline import Pipeline
 
 
 def main():
+    load_dotenv()
+
     parser = argparse.ArgumentParser(
         description="Sonar - 帮你读懂任何文章的学习助手",
     )

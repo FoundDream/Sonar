@@ -192,7 +192,9 @@ class SynthesizeStage:
 
         return report
 
-    def _build_sections(self, overview, research, prerequisites, concepts, learning_path, paper_list=None) -> list[dict]:
+    def _build_sections(
+        self, overview, research, prerequisites, concepts, learning_path, paper_list=None
+    ) -> list[dict]:
         """Build sections list for section-based template rendering."""
         sections = []
 

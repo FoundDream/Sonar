@@ -56,7 +56,11 @@ class Pipeline:
         from orchestrator import Orchestrator
 
         print("[Pipeline] 使用 Orchestrator 模式")
-        orch = Orchestrator(self.llm, self.preset, self.goal)
+
+        def _persist_stage(stage_name: str, data: dict) -> None:
+            save_stage_output(data, self._stage_path(stage_name))
+
+        orch = Orchestrator(self.llm, self.preset, self.goal, on_stage_output=_persist_stage)
         report_data = orch.run(url)
 
         save_stage_output(report_data.to_dict(), self._stage_path("synthesize"))
@@ -162,7 +166,10 @@ class Pipeline:
             resolved_run_id = self._new_run_id()
 
         self.run_id = resolved_run_id
-        self.run_dir = OUTPUT_DIR if resolved_run_id == LEGACY_RUN_ID else os.path.join(RUNS_DIR, resolved_run_id)
+        if resolved_run_id == LEGACY_RUN_ID:
+            self.run_dir = OUTPUT_DIR
+        else:
+            self.run_dir = os.path.join(RUNS_DIR, resolved_run_id)
         os.makedirs(self.run_dir, exist_ok=True)
 
         if resolved_run_id != LEGACY_RUN_ID:
@@ -207,4 +214,7 @@ class Pipeline:
                 data = load_stage_output(path)
                 if "url" in data:
                     return data["url"]
-        raise ValueError("Cannot determine URL when resuming. Provide a URL or ensure prior stage outputs exist.")
+        raise ValueError(
+            "Cannot determine URL when resuming. "
+            "Provide a URL or ensure prior stage outputs exist."
+        )

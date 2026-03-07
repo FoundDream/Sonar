@@ -25,7 +25,9 @@ class AnalyzeStage:
         )
 
         if result.overview:
-            print(f"[分析] 难度: {result.overview.get('difficulty', '?')}, 建议: {result.overview.get('recommendation', '?')}")
+            difficulty = result.overview.get("difficulty", "?")
+            recommendation = result.overview.get("recommendation", "?")
+            print(f"[分析] 难度: {difficulty}, 建议: {recommendation}")
         print(f"[分析] 摘要: {result.article_summary[:80]}...")
         if result.article_analysis.get("main_thesis"):
             print(f"[分析] 核心论点: {result.article_analysis['main_thesis'][:80]}...")
@@ -53,7 +55,9 @@ class AnalyzeStage:
    - "topic": 一句话概括文章主题（不超过 30 字）
    - "target_audience": 适合什么样的读者（如"有深度学习基础的工程师"）
    - "difficulty": 阅读难度，只能是 "beginner" / "intermediate" / "advanced"
-   - "recommendation": 阅读建议，只能是 "deep_read"（可以直接深读）/ "skim_first"（建议先略读）/ "learn_prerequisites"（建议先补前置知识）
+   - "recommendation": 阅读建议，只能是以下之一：
+     "deep_read"（可以直接深读）/ "skim_first"（建议先略读）/
+     "learn_prerequisites"（建议先补前置知识）
 
 2. "summary": 文章核心内容摘要（120-220字）
 
@@ -71,7 +75,28 @@ class AnalyzeStage:
 4. "concepts": 核心概念名称列表（5-8个字符串），包括前置知识和核心概念
 
 示例：
-{{"overview": {{"topic": "用LLM构建自主智能体", "target_audience": "有NLP基础的工程师", "difficulty": "advanced", "recommendation": "learn_prerequisites"}}, "summary": "这篇文章讲述了...", "article_analysis": {{"main_thesis": "作者认为...", "key_insights": [{{"title": "洞见A", "detail": "作者指出...", "why_it_matters": "它解释了..."}}, {{"title": "洞见B", "detail": "文章进一步说明...", "why_it_matters": "它决定了..."}},], "supporting_points": [{{"claim": "主张A", "evidence": "作者通过...支撑"}}, {{"claim": "主张B", "evidence": "文章用...说明"}}], "author_takeaway": "最终作者想强调..."}}, "concepts": ["概念A", "概念B", "概念C"]}}"""},
+{{
+  "overview": {{
+    "topic": "用LLM构建自主智能体",
+    "target_audience": "有NLP基础的工程师",
+    "difficulty": "advanced",
+    "recommendation": "learn_prerequisites"
+  }},
+  "summary": "这篇文章讲述了...",
+  "article_analysis": {{
+    "main_thesis": "作者认为...",
+    "key_insights": [
+      {{"title": "洞见A", "detail": "作者指出...", "why_it_matters": "它解释了..."}},
+      {{"title": "洞见B", "detail": "文章进一步说明...", "why_it_matters": "它决定了..."}}
+    ],
+    "supporting_points": [
+      {{"claim": "主张A", "evidence": "作者通过...支撑"}},
+      {{"claim": "主张B", "evidence": "文章用...说明"}}
+    ],
+    "author_takeaway": "最终作者想强调..."
+  }},
+  "concepts": ["概念A", "概念B", "概念C"]
+}}"""},
         ]
         resp = self.llm.chat(messages)
         content = resp.get("content", "")
