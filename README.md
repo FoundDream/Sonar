@@ -1,6 +1,6 @@
 ## Sonar
 
-输入文章 URL，自动抓取内容并生成结构化报告。支持两种模式：快速阅读报告和深度概念学习报告。
+输入文章 URL 或本地文件，自动分析内容并生成结构化报告。支持两种模式：快速阅读报告和深度概念学习报告。
 
 ## Quickstart
 
@@ -11,11 +11,11 @@ uv sync
 # 2) 配置环境变量
 cp .env.example .env
 
-# 3) 快速阅读报告（摘要 + 观点拆解，不研究概念）
+# 3) 分析网页文章
 uv run main.py https://example.com/some-article --mode reading
 
-# 4) 深度学习报告（概念研究 + 学习路径）
-uv run main.py https://example.com/some-article
+# 4) 分析本地文件（支持 .pdf / .md / .txt / .html）
+uv run main.py ./paper.pdf --mode reading
 ```
 
 ## 报告模式
@@ -27,22 +27,24 @@ uv run main.py https://example.com/some-article
 
 ## CLI 用法
 
+输入可以是 URL 或本地文件路径：
+
 ```bash
 # 阅读报告（摘要 + 观点拆解）
-uv run main.py <URL> --mode reading
+uv run main.py <URL或文件> --mode reading
 
 # 学习报告（默认，概念研究 + 学习路径）
-uv run main.py <URL>
+uv run main.py <URL或文件>
 ```
 
 Learning 模式下的额外选项：
 
 ```bash
 # 学术论文导向（关注方法论/关键发现/相关论文）
-uv run main.py <URL> --preset research
+uv run main.py <URL或文件> --preset research
 
 # 自定义学习目标（LLM 会据此筛选和排序概念）
-uv run main.py <URL> --goal "我想理解这篇文章里的系统设计权衡"
+uv run main.py <URL或文件> --goal "我想理解这篇文章里的系统设计权衡"
 ```
 
 断点恢复：
