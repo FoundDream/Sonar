@@ -1,0 +1,28 @@
+{% if overview %}
+<div class="overview-strip">
+    {% if overview.topic %}
+    <div class="ov-item">
+        <span class="ov-label">主题</span>
+        <span class="ov-value">{{ overview.topic }}</span>
+    </div>
+    {% endif %}
+    {% if overview.difficulty %}
+    <div class="ov-item">
+        <span class="ov-label">难度</span>
+        <span class="ov-value">{% if overview.difficulty == 'beginner' %}入门{% elif overview.difficulty == 'intermediate' %}进阶{% elif overview.difficulty == 'advanced' %}专业{% else %}{{ overview.difficulty }}{% endif %}</span>
+    </div>
+    {% endif %}
+    {% if overview.recommendation %}
+    <div class="ov-item">
+        <span class="ov-label">建议</span>
+        <span class="ov-value">{% if overview.recommendation == 'deep_read' %}可以直接深读{% elif overview.recommendation == 'skim_first' %}建议先略读{% elif overview.recommendation == 'learn_prerequisites' %}先补前置知识{% else %}{{ overview.recommendation }}{% endif %}</span>
+    </div>
+    {% endif %}
+    {% if overview.target_audience %}
+    <div class="ov-item">
+        <span class="ov-label">适合</span>
+        <span class="ov-value">{{ overview.target_audience }}</span>
+    </div>
+    {% endif %}
+</div>
+{% endif %}

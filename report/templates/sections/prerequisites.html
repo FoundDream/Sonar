@@ -1,0 +1,50 @@
+{% if prerequisites %}
+<div class="section">
+    <h2>前置知识</h2>
+    <p class="section-desc">阅读原文前建议先了解以下概念</p>
+
+    {% for item in prerequisites %}
+    {% if item.name %}
+    <div class="concept" id="concept-{{ item.name | slugify }}">
+        <h3>
+            {{ item.name }}
+            {% if item.priority == 'must' %}<span class="priority priority-must">必须</span>
+            {% elif item.priority == 'should' %}<span class="priority priority-should">建议</span>{% endif %}
+        </h3>
+        <p class="explanation">{{ item.explanation | default("暂无解释") }}</p>
+        {% if item.why_learn_first %}
+        <div class="insight-block">
+            <div class="insight-label">为什么要先学</div>
+            {{ item.why_learn_first }}
+        </div>
+        {% endif %}
+        {% if item.example %}
+        <div class="insight-block">
+            <div class="insight-label">例子</div>
+            <span class="support-text">{{ item.example }}</span>
+        </div>
+        {% endif %}
+        {% if item.analogy %}
+        <div class="insight-block">
+            <div class="insight-label">类比</div>
+            <span class="support-text">{{ item.analogy }}</span>
+        </div>
+        {% endif %}
+        {% if item.resources %}
+        <div class="resources">
+            {% for r in item.resources %}
+            {% if r.url and r.title %}
+            <div class="resource-item">
+                <a href="{{ r.url }}" target="_blank">{{ r.title }}</a>
+                {% if r.description %}<span class="desc">— {{ r.description }}</span>{% endif %}
+            </div>
+            {% endif %}
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+    {% if not loop.last %}<hr>{% endif %}
+    {% endif %}
+    {% endfor %}
+</div>
+{% endif %}

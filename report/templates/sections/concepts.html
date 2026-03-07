@@ -1,0 +1,52 @@
+{% if concepts %}
+<div class="section" {% if not prerequisites %}style="margin-top:0;"{% endif %}>
+    <h2>核心概念</h2>
+    <p class="section-desc">文章直接讨论的重要概念</p>
+
+    {% for item in concepts %}
+    {% if item.name %}
+    <div class="concept" id="concept-{{ item.name | slugify }}">
+        <h3>{{ item.name }}</h3>
+        <p class="explanation">{{ item.explanation | default("暂无解释") }}</p>
+        {% if item.why_important %}
+        <div class="insight-block">
+            <div class="insight-label">为什么重要</div>
+            {{ item.why_important }}
+        </div>
+        {% endif %}
+        {% if item.article_role %}
+        <div class="insight-block">
+            <div class="insight-label">在本文中的角色</div>
+            <span class="support-text">{{ item.article_role }}</span>
+        </div>
+        {% endif %}
+        {% if item.example %}
+        <div class="insight-block">
+            <div class="insight-label">例子</div>
+            <span class="support-text">{{ item.example }}</span>
+        </div>
+        {% endif %}
+        {% if item.analogy %}
+        <div class="insight-block">
+            <div class="insight-label">类比</div>
+            <span class="support-text">{{ item.analogy }}</span>
+        </div>
+        {% endif %}
+        {% if item.resources %}
+        <div class="resources">
+            {% for r in item.resources %}
+            {% if r.url and r.title %}
+            <div class="resource-item">
+                <a href="{{ r.url }}" target="_blank">{{ r.title }}</a>
+                {% if r.description %}<span class="desc">— {{ r.description }}</span>{% endif %}
+            </div>
+            {% endif %}
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+    {% if not loop.last %}<hr>{% endif %}
+    {% endif %}
+    {% endfor %}
+</div>
+{% endif %}

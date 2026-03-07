@@ -1,0 +1,28 @@
+{% if prerequisites or concepts %}
+<div class="toc">
+    <div class="toc-title">目录</div>
+    {% if prerequisites %}
+    <div class="toc-group">
+        <div class="toc-group-label">前置知识</div>
+        <ul class="toc-list">
+            {% for item in prerequisites %}{% if item.name %}
+            <li>
+                <a href="#concept-{{ item.name | slugify }}">{{ item.name }}</a>
+                {% if item.priority == 'must' %}<span class="priority priority-must">必须</span>{% elif item.priority == 'should' %}<span class="priority priority-should">建议</span>{% endif %}
+            </li>
+            {% endif %}{% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+    {% if concepts %}
+    <div class="toc-group">
+        <div class="toc-group-label">核心概念</div>
+        <ul class="toc-list">
+            {% for item in concepts %}{% if item.name %}
+            <li><a href="#concept-{{ item.name | slugify }}">{{ item.name }}</a></li>
+            {% endif %}{% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+</div>
+{% endif %}

@@ -1,0 +1,46 @@
+{% if article_analysis and article_analysis.main_thesis %}
+<div class="thesis-block">
+    <p class="section-label">文章核心论点</p>
+    <p>{{ article_analysis.main_thesis }}</p>
+</div>
+{% endif %}
+
+{% if article_analysis and article_analysis.key_insights %}
+<div class="section">
+    <h2>关键洞见</h2>
+    <p class="section-desc">这篇文章真正有价值的观点，不只是背景知识</p>
+    <div class="insight-list">
+        {% for item in article_analysis.key_insights %}
+        <div class="article-card">
+            <h3>{{ item.title }}</h3>
+            <p>{{ item.detail }}</p>
+            {% if item.why_it_matters %}
+            <p class="meta-note">为什么重要：{{ item.why_it_matters }}</p>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+{% if article_analysis and article_analysis.supporting_points %}
+<div class="section">
+    <h2>支撑论据</h2>
+    <p class="section-desc">作者靠哪些观察、例子或推理来支撑自己的观点</p>
+    <div class="supporting-list">
+        {% for item in article_analysis.supporting_points %}
+        <div class="article-card">
+            <h3>{{ item.claim }}</h3>
+            <p>{{ item.evidence }}</p>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+{% if article_analysis and article_analysis.author_takeaway %}
+<div class="thesis-block">
+    <p class="section-label">作者最后想让你记住</p>
+    <p>{{ article_analysis.author_takeaway }}</p>
+</div>
+{% endif %}

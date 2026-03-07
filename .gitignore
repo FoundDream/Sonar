@@ -1,0 +1,24 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info/
+
+# Virtual environments
+.venv/
+
+# Environment variables / secrets
+.env
+
+# Generated outputs
+output/
+
+# Private working notes (not open-sourced)
+notes/
+
+# Test/cache artifacts
+.pytest_cache/
+.ruff_cache/
+.coverage

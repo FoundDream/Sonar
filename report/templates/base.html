@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }} - Sonar 学习报告</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,400;0,600;0,700;1,400&family=Inter:wght@400;500;600&display=swap');
+
+        :root {
+            --text: #1a1a1a;
+            --text-secondary: #555;
+            --text-muted: #888;
+            --bg: #e0e0e0;
+            --surface: #fff;
+            --border: #d0d0d0;
+            --accent: #c0392b;
+            --accent-light: rgba(192, 57, 43, 0.06);
+            --amber-bg: rgba(217, 119, 6, 0.08);
+            --green-text: #2d6a4f;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            font-size: 15px;
+            line-height: 1.8;
+            color: var(--text);
+            background: var(--bg);
+            padding: 0;
+        }
+
+        /* ── 顶部色条 ── */
+        .top-bar {
+            height: 4px;
+            background: var(--text);
+        }
+
+        /* ── 纸张 ── */
+        .paper {
+            max-width: 720px;
+            margin: 2.5rem auto;
+            background: var(--surface);
+            padding: 3rem 3.5rem;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.08), 0 0 1px rgba(0,0,0,0.05);
+        }
+
+        /* ── 标题区 ── */
+        .title-block {
+            margin-bottom: 2rem;
+            padding-bottom: 1.5rem;
+            border-bottom: 1px solid var(--border);
+        }
+        .brand {
+            font-size: 0.68rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-muted);
+            margin-bottom: 0.8rem;
+        }
+        .title-block h1 {
+            font-family: 'Newsreader', Georgia, serif;
+            font-size: 2.2rem;
+            font-weight: 700;
+            line-height: 1.25;
+            color: var(--text);
+            margin-bottom: 0.6rem;
+        }
+        .title-block .meta {
+            font-size: 0.82rem;
+            color: var(--text-muted);
+        }
+        .title-block .meta a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            border-bottom: 1px solid var(--border);
+        }
+        .title-block .meta a:hover {
+            color: var(--text);
+            border-color: var(--text);
+        }
+
+        /* ── 速览条 ── */
+        .overview-strip {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1.5rem;
+            padding: 0.8rem 0;
+            margin-bottom: 1.5rem;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.82rem;
+        }
+        .ov-item {
+            display: flex;
+            gap: 0.4rem;
+        }
+        .ov-label {
+            color: var(--text-muted);
+        }
+        .ov-value {
+            color: var(--text);
+            font-weight: 500;
+        }
+
+        /* ── 正文 ── */
+        p { margin-bottom: 1rem; }
+        .section-label {
+            font-size: 0.68rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-muted);
+            margin-bottom: 0.4rem;
+        }
+        .summary-text {
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+        }
+        .thesis-block {
+            margin-top: 1.2rem;
+            padding: 1rem 1.2rem;
+            background: linear-gradient(135deg, rgba(192, 57, 43, 0.07), rgba(0, 0, 0, 0.02));
+            border-left: 3px solid var(--accent);
+        }
+        .thesis-block p:last-child {
+            margin-bottom: 0;
+        }
+        .insight-list,
+        .supporting-list {
+            display: grid;
+            gap: 0.8rem;
+            margin-top: 1rem;
+        }
+        .article-card {
+            border: 1px solid var(--border);
+            padding: 0.95rem 1rem;
+        }
+        .article-card h3 {
+            font-family: 'Newsreader', Georgia, serif;
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 0.35rem;
+        }
+        .article-card p:last-child {
+            margin-bottom: 0;
+        }
+        .article-card .meta-note {
+            margin-top: 0.5rem;
+            color: var(--text-muted);
+            font-size: 0.82rem;
+        }
+
+        /* ── 目录 ── */
+        .toc {
+            margin: 1.5rem 0 0;
+            padding: 1.2rem 1.5rem;
+            border: 1px solid var(--border);
+        }
+        .toc-title {
+            font-size: 0.68rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-muted);
+            margin-bottom: 0.6rem;
+        }
+        .toc-group {
+            margin-bottom: 0.5rem;
+        }
+        .toc-group:last-child {
+            margin-bottom: 0;
+        }
+        .toc-group-label {
+            font-family: 'Newsreader', Georgia, serif;
+            font-size: 0.88rem;
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 0.2rem;
+        }
+        .toc-list {
+            list-style: none;
+            padding: 0;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.2rem 1rem;
+        }
+        .toc-list li {
+            font-size: 0.82rem;
+        }
+        .toc-list a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            border-bottom: 1px solid transparent;
+            transition: border-color 0.15s, color 0.15s;
+        }
+        .toc-list a:hover {
+            color: var(--text);
+            border-bottom-color: var(--text);
+        }
+        .toc-list .priority {
+            font-size: 0.62rem;
+            font-weight: 600;
+            vertical-align: middle;
+            margin-left: 0.2rem;
+            padding: 0.05rem 0.25rem;
+            border-radius: 2px;
+        }
+
+        /* ── 学习路径 ── */
+        .learning-path {
+            padding: 1.2rem 1.5rem;
+            border-left: 3px solid var(--green-text);
+            margin: 1.5rem 0 0;
+        }
+        .learning-path h2 {
+            font-family: 'Newsreader', Georgia, serif;
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--green-text);
+            margin-bottom: 0.6rem;
+        }
+        .learning-path ol {
+            padding-left: 1.2rem;
+            color: var(--text-secondary);
+            font-size: 0.88rem;
+        }
+        .learning-path li { margin: 0.4rem 0; }
+        .learning-path li::marker {
+            color: var(--green-text);
+            font-weight: 600;
+        }
+        .path-step {
+            margin-bottom: 0.8rem;
+        }
+        .path-step:last-child {
+            margin-bottom: 0;
+        }
+        .path-step strong {
+            color: var(--text);
+        }
+        .path-step .path-meta {
+            display: block;
+            margin-top: 0.2rem;
+            color: var(--text-muted);
+            font-size: 0.8rem;
+        }
+        .path-tag {
+            font-size: 0.68rem;
+            color: var(--text-muted);
+            background: rgba(0,0,0,0.04);
+            padding: 0.1rem 0.35rem;
+            border-radius: 2px;
+            margin-left: 0.2rem;
+            cursor: pointer;
+            transition: background 0.15s, color 0.15s;
+        }
+        .path-tag:hover {
+            background: rgba(0,0,0,0.1);
+            color: var(--text);
+        }
+
+        /* ── 分区标题 ── */
+        .section {
+            margin: 2.5rem 0 0;
+        }
+        .section > h2 {
+            font-family: 'Newsreader', Georgia, serif;
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: var(--text);
+            margin-bottom: 0.2rem;
+        }
+        .section-desc {
+            font-size: 0.82rem;
+            color: var(--text-muted);
+            margin-bottom: 1.2rem;
+        }
+
+        /* ── 概念条目 ── */
+        .concept {
+            margin-bottom: 1.8rem;
+        }
+        .concept h3 {
+            font-family: 'Newsreader', Georgia, serif;
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 0.3rem;
+        }
+        .concept h3 .priority {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.68rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            vertical-align: middle;
+            margin-left: 0.5rem;
+            padding: 0.12rem 0.4rem;
+            border-radius: 2px;
+        }
+        .priority-must {
+            background: var(--accent-light);
+            color: var(--accent);
+        }
+        .priority-should {
+            background: var(--amber-bg);
+            color: #92400e;
+        }
+        .concept .explanation {
+            color: var(--text-secondary);
+            margin-bottom: 0.4rem;
+        }
+        .concept .support-text {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        /* ── 高亮区块 ── */
+        .insight-block {
+            background: var(--accent-light);
+            border-bottom: 2px solid var(--accent);
+            padding: 0.8rem 1rem;
+            margin: 0.6rem 0;
+            font-size: 0.88rem;
+            color: var(--text-secondary);
+        }
+        .insight-label {
+            font-size: 0.68rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            margin-bottom: 0.2rem;
+        }
+
+        /* ── 资料链接 ── */
+        .resources {
+            margin-top: 0.6rem;
+        }
+        .resource-item {
+            display: block;
+            padding: 0.3rem 0;
+            font-size: 0.88rem;
+        }
+        .resource-item a {
+            color: var(--text);
+            text-decoration: none;
+            border-bottom: 1px solid var(--border);
+        }
+        .resource-item a:hover { border-color: var(--text); }
+        .resource-item .desc {
+            color: var(--text-muted);
+            font-size: 0.82rem;
+            margin-left: 0.2rem;
+        }
+
+        /* ── 分隔线 ── */
+        hr {
+            border: none;
+            border-top: 1px solid var(--border);
+            margin: 1.5rem 0;
+        }
+
+        /* ── 页脚 ── */
+        .footer {
+            text-align: center;
+            padding: 1rem 0 0;
+            margin-top: 2rem;
+            border-top: 1px solid var(--border);
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        /* ── 响应式 ── */
+        @media (max-width: 640px) {
+            .paper { margin: 1rem 0.5rem; padding: 2rem 1.5rem; }
+            .title-block h1 { font-size: 1.6rem; }
+            .overview-strip { flex-direction: column; gap: 0.4rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="top-bar"></div>
+
+    <!-- 第一张纸：速览 + 摘要 + 学习路径 -->
+    <div class="paper">
+        <div class="title-block">
+            <div class="brand">Sonar 学习报告</div>
+            <h1>{{ title }}</h1>
+            {% if source_url %}
+            <p class="meta">原文: <a href="{{ source_url }}" target="_blank">{{ source_url }}</a></p>
+            {% endif %}
+        </div>
+
+        {% for section in _paper1_sections %}
+        {% include "sections/" + section.type + ".html" %}
+        {% endfor %}
+    </div>
+
+    <!-- 第二张纸：前置知识 + 核心概念 -->
+    <div class="paper">
+
+        {% for section in _paper2_sections %}
+        {% if not loop.first and section.type in ("concepts",) and _has_prerequisites %}
+        <hr style="margin: 2.5rem 0;">
+        {% endif %}
+        {% include "sections/" + section.type + ".html" %}
+        {% endfor %}
+
+        <div class="footer">Generated by Sonar</div>
+    </div>
+
+</body>
+</html>

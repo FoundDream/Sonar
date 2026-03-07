@@ -1,0 +1,17 @@
+{% if learning_path %}
+<div class="learning-path">
+    <h2>建议学习路径</h2>
+    <ol>
+        {% for item in learning_path %}
+        <li>
+            <div class="path-step">
+                <strong>{{ item.step }}</strong>
+                {% if item.goal %}<span class="path-meta">目标：{{ item.goal }}</span>{% endif %}
+                {% if item.reason %}<span class="path-meta">为什么现在学：{{ item.reason }}</span>{% endif %}
+            </div>
+            {% if item.concepts %}{% for c in item.concepts %}<a class="path-tag" href="#concept-{{ c | slugify }}">{{ c }}</a>{% endfor %}{% endif %}
+        </li>
+        {% endfor %}
+    </ol>
+</div>
+{% endif %}

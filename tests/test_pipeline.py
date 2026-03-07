@@ -1,0 +1,49 @@
+from pathlib import Path
+
+import pipeline
+from pipeline import Pipeline
+from stages.models import save_stage_output
+
+
+def _patch_output_paths(monkeypatch, base: Path) -> None:
+    output_dir = base / "output"
+    monkeypatch.setattr(pipeline, "OUTPUT_DIR", str(output_dir))
+    monkeypatch.setattr(pipeline, "RUNS_DIR", str(output_dir / "runs"))
+    monkeypatch.setattr(pipeline, "LATEST_RUN_FILE", str(output_dir / "latest_run.txt"))
+
+
+def test_sanitize_run_id() -> None:
+    assert Pipeline._sanitize_run_id(" demo / run ") == "demo-run"
+
+
+def test_init_run_storage_writes_latest_run(monkeypatch, tmp_path: Path) -> None:
+    _patch_output_paths(monkeypatch, tmp_path)
+    p = Pipeline(llm=None)  # type: ignore[arg-type]
+
+    p._init_run_storage(resume_from=None, run_id="my run")
+
+    assert p.run_id == "my-run"
+    assert Path(p.run_dir).is_dir()
+    latest = (tmp_path / "output" / "latest_run.txt").read_text(encoding="utf-8")
+    assert latest == "my-run"
+
+
+def test_resume_reuses_latest_run(monkeypatch, tmp_path: Path) -> None:
+    _patch_output_paths(monkeypatch, tmp_path)
+    latest_file = tmp_path / "output" / "latest_run.txt"
+    latest_file.parent.mkdir(parents=True, exist_ok=True)
+    latest_file.write_text("saved-run", encoding="utf-8")
+
+    p = Pipeline(llm=None)  # type: ignore[arg-type]
+    p._init_run_storage(resume_from="analyze", run_id=None)
+
+    assert p.run_id == "saved-run"
+    assert p.run_dir.endswith("output/runs/saved-run")
+
+
+def test_load_url_from_previous_stage(tmp_path: Path) -> None:
+    p = Pipeline(llm=None)  # type: ignore[arg-type]
+    p.run_dir = str(tmp_path)
+    save_stage_output({"url": "https://example.com/article"}, str(tmp_path / "fetch.json"))
+
+    assert p._load_url("") == "https://example.com/article"
