@@ -20,10 +20,10 @@ uv run main.py https://example.com/some-article
 
 ## 报告模式
 
-| 模式 | 说明 | 流程 | 成本 |
-| --- | --- | --- | --- |
-| `--mode reading` | 阅读报告：摘要、核心论点、关键洞见 | Fetch → Analyze → 渲染 | 2 次 LLM，无搜索 |
-| `--mode learning`（默认） | 学习报告：概念解释、学习资料、学习路径 | Fetch → Analyze → Plan → Research → Synthesize | 多次 LLM + 搜索 |
+| 模式                      | 说明                                   | 流程                                           | 成本             |
+| ------------------------- | -------------------------------------- | ---------------------------------------------- | ---------------- |
+| `--mode reading`          | 阅读报告：摘要、核心论点、关键洞见     | Fetch → Analyze → 渲染                         | 2 次 LLM，无搜索 |
+| `--mode learning`（默认） | 学习报告：概念解释、学习资料、学习路径 | Fetch → Analyze → Plan → Research → Synthesize | 多次 LLM + 搜索  |
 
 ## CLI 用法
 
@@ -61,33 +61,6 @@ uv run main.py --run-id 20260307-demo --resume-from research
 - 阶段快照：`fetch.json / analyze.json / plan.json / research.json / synthesize.json`
 - 报告：`report.html`
 - `output/report.html` 始终指向最近一次结果
-
-## 分层调试
-
-### Learning 模式
-
-```
-Fetch -> Analyze -> Plan -> Research -> Synthesize
-```
-
-| 改了什么         | 怎么测                     | 成本        |
-| ---------------- | -------------------------- | ----------- |
-| 模板/CSS         | `--resume-from synthesize` | 无 LLM/搜索 |
-| 报告组装逻辑     | `--resume-from synthesize` | 无 LLM/搜索 |
-| 研究/合成 prompt | `--resume-from analyze`    | LLM + 搜索  |
-| 全流程           | 直接跑 URL                 | 全部        |
-
-### Reading 模式
-
-```
-Fetch -> Analyze -> 渲染
-```
-
-| 改了什么     | 怎么测                                          | 成本     |
-| ------------ | ----------------------------------------------- | -------- |
-| 模板/CSS     | `--mode reading --resume-from synthesize`       | 无 LLM   |
-| 分析 prompt  | `--mode reading --resume-from analyze`          | 1 次 LLM |
-| 全流程       | `--mode reading` + URL                          | 2 次 LLM |
 
 ## 配置
 
