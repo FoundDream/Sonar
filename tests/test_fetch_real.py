@@ -231,6 +231,119 @@ class TestURLFetch:
         # YouTube 是 JS 渲染站，记录行为
         self._log_result("YouTube", result)
 
+    # ── 新增平台 ──
+
+    def test_36kr(self, stage) -> None:
+        """36氪 — 中文科技媒体。"""
+        result = stage.run("https://36kr.com/p/2564524328960002")
+
+        self._log_result("36氪", result)
+        assert isinstance(result, FetchResult)
+        assert len(result.content) > 200
+
+    def test_csdn(self, stage) -> None:
+        """CSDN 博客 — 中文技术社区。"""
+        result = stage.run("https://blog.csdn.net/v_JULY_v/article/details/127411638")
+
+        self._log_result("CSDN", result)
+        assert isinstance(result, FetchResult)
+        assert len(result.content) > 500
+
+    def test_devto(self, stage) -> None:
+        """Dev.to — 英文开发者社区。"""
+        result = stage.run("https://dev.to/lydiahallie/javascript-visualized-event-loop-3dif")
+
+        self._log_result("Dev.to", result)
+        assert isinstance(result, FetchResult)
+        assert len(result.content) > 500
+
+    def test_ithome(self, stage) -> None:
+        """IT之家 — 中文科技资讯。"""
+        result = stage.run("https://www.ithome.com/0/800/578.htm")
+
+        self._log_result("IT之家", result)
+        assert isinstance(result, FetchResult)
+        assert len(result.content) > 200
+
+    def test_douban(self, stage) -> None:
+        """豆瓣电影 — 中文内容平台。"""
+        result = stage.run("https://movie.douban.com/subject/1292052/")
+
+        self._log_result("豆瓣", result)
+        assert isinstance(result, FetchResult)
+        assert len(result.content) > 500
+
+    def test_weread(self, stage) -> None:
+        """微信读书 — 书籍页面（公开信息）。"""
+        result = stage.run("https://weread.qq.com/web/bookDetail/ce032b305a9bc1ce0b0dd2a")
+
+        self._log_result("微信读书", result)
+        assert isinstance(result, FetchResult)
+        assert len(result.content) > 200
+
+    def test_v2ex(self, stage) -> None:
+        """V2EX — 中文技术社区。"""
+        result = stage.run("https://www.v2ex.com/t/1095923")
+
+        self._log_result("V2EX", result)
+        assert isinstance(result, FetchResult)
+        assert len(result.content) > 200
+
+    def test_bbc(self, stage) -> None:
+        """BBC News — 英文新闻。"""
+        result = stage.run("https://www.bbc.com/news/technology-68128396")
+
+        self._log_result("BBC", result)
+        assert isinstance(result, FetchResult)
+        assert len(result.content) > 500
+
+    def test_infoq(self, stage) -> None:
+        """InfoQ — 技术媒体。"""
+        result = stage.run("https://www.infoq.com/articles/architecture-trends-2025/")
+
+        self._log_result("InfoQ", result)
+        assert isinstance(result, FetchResult)
+        assert len(result.content) > 500
+
+    def test_bilibili_video(self, stage) -> None:
+        """B站视频页 — JS 渲染站，Jina 通常能拿到描述。"""
+        result = stage.run("https://www.bilibili.com/video/BV1Xt411q7XZ/")
+
+        self._log_result("B站", result)
+        assert isinstance(result, FetchResult)
+
+    def test_gitlab(self, stage) -> None:
+        """GitLab 仓库页面。"""
+        result = stage.run("https://gitlab.com/gitlab-org/gitlab/-/blob/master/README.md")
+
+        self._log_result("GitLab", result)
+        assert isinstance(result, FetchResult)
+        assert len(result.content) > 200
+
+    def test_npm_package(self, stage) -> None:
+        """NPM 包页面。"""
+        result = stage.run("https://www.npmjs.com/package/react")
+
+        self._log_result("NPM", result)
+        assert isinstance(result, FetchResult)
+        assert len(result.content) > 200
+
+    def test_arxiv_pdf(self, stage) -> None:
+        """arXiv PDF — 直接 PDF 链接。"""
+        result = stage.run("https://arxiv.org/pdf/1706.03762")
+
+        self._log_result("arXiv PDF", result)
+        assert isinstance(result, FetchResult)
+        assert len(result.content) > 500
+
+    def test_stackoverflow(self, stage) -> None:
+        """Stack Overflow — 技术问答。"""
+        result = stage.run("https://stackoverflow.com/questions/44209978/what-is-an-attention-mechanism")
+
+        self._log_result("StackOverflow", result)
+        assert isinstance(result, FetchResult)
+        assert len(result.content) > 200
+
     @staticmethod
     def _log_result(label: str, result) -> None:
         """打印测试结果供人工检查。"""
