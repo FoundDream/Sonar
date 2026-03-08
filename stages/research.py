@@ -4,8 +4,8 @@ import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from llm.client import LLMClient
-from report.schema import format_issues, validate_concept
-from stages.models import AnalysisResult, ResearchPlan, ResearchResult
+from report.schema import format_issues, validate_concept, validate_finding
+from stages.models import AnalysisResult, FieldSpec, ResearchPlan, ResearchResult
 from stages.prompts.research import RESEARCHER_PROMPT
 from stages.prompts.schemas import CONCEPT_DONE_TOOL, build_finding_tool
 from stages.prompts.verify import VERIFIER_PROMPT, VERIFY_TOOL
@@ -35,11 +35,13 @@ class ConceptResearcher:
     """内层 Agent：独立 context 研究单个概念。"""
 
     def __init__(self, llm: LLMClient, finding_tool: dict | None = None,
-                 researcher_prompt: str | None = None):
+                 researcher_prompt: str | None = None,
+                 finding_schema: list[FieldSpec] | None = None):
         self.llm = llm
         self.finding_tool = finding_tool or CONCEPT_DONE_TOOL
         self.finding_tool_name = self.finding_tool["function"]["name"]
         self.researcher_prompt = researcher_prompt or RESEARCHER_PROMPT
+        self.finding_schema = finding_schema
 
     def research(self, concept: str, article_summary: str, hints: str = "") -> dict:
         messages = [
@@ -78,7 +80,10 @@ class ConceptResearcher:
                     continue
 
                 if name == self.finding_tool_name:
-                    issues = validate_concept(args)
+                    if self.finding_schema:
+                        issues = validate_finding(args, self.finding_schema)
+                    else:
+                        issues = validate_concept(args)
                     errors = [iss for iss in issues if iss.severity == "error"]
 
                     if not errors:
@@ -145,8 +150,9 @@ class ConceptResearcher:
 class ConceptVerifier:
     """审查 Researcher 产出的内容质量。"""
 
-    def __init__(self, llm: LLMClient):
+    def __init__(self, llm: LLMClient, finding_schema: list[FieldSpec] | None = None):
         self.llm = llm
+        self.finding_schema = finding_schema
 
     def verify(self, result: dict, article_summary: str) -> dict:
         messages = [
@@ -173,16 +179,29 @@ class ConceptVerifier:
             if r.get("description"):
                 resources_text += f"    {r['description']}\n"
 
+        # 动态展示 finding 字段，适配不同 schema
+        if self.finding_schema:
+            fields_text = ""
+            for spec in self.finding_schema:
+                if spec.name in ("name", "resources"):
+                    continue
+                value = result.get(spec.name, "(空)")
+                if isinstance(value, list):
+                    value = ", ".join(str(v) for v in value) if value else "(空)"
+                fields_text += f"\n**{spec.description}**: {value}\n"
+        else:
+            fields_text = f"""
+**研究员的解释**: {result.get('explanation', '(空)')}
+
+**为什么重要**: {result.get('why_important', '(空)')}
+"""
+
         return f"""请审查以下研究结果：
 
 **概念**: {result.get('name', '?')}
 
 **文章背景**: {article_summary[:400]}
-
-**研究员的解释**: {result.get('explanation', '(空)')}
-
-**为什么重要**: {result.get('why_important', '(空)')}
-
+{fields_text}
 **推荐资料**:
 {resources_text or '(无)'}
 
@@ -196,8 +215,10 @@ class ResearchStage:
         self.llm = llm
         self.plan = plan
         self._finding_tool = None
+        self._finding_schema = None
         if plan and plan.finding_schema:
             self._finding_tool = build_finding_tool(plan.finding_schema)
+            self._finding_schema = plan.finding_schema
 
     def run(self, analysis: AnalysisResult) -> ResearchResult:
         # Use plan's selected concepts if available, otherwise fall back to analysis
@@ -213,8 +234,9 @@ class ResearchStage:
         concept_hints = self.plan.concept_hints if self.plan else {}
 
         def _research_one(concept: str) -> tuple[str, dict]:
-            researcher = ConceptResearcher(self.llm, self._finding_tool, researcher_prompt)
-            verifier = ConceptVerifier(self.llm)
+            researcher = ConceptResearcher(self.llm, self._finding_tool, researcher_prompt,
+                                              self._finding_schema)
+            verifier = ConceptVerifier(self.llm, self._finding_schema)
 
             hints = concept_hints.get(concept, "")
             result = researcher.research(concept, summary, hints=hints)
