@@ -1,33 +1,33 @@
 from pathlib import Path
 
-import pipeline
+import agents.coordinator as coordinator_mod
+from agents.coordinator import Coordinator
 from models import (
     AnalysisResult,
     FetchResult,
     save_stage_output,
 )
-from pipeline import Pipeline
 
 
 def _patch_output_paths(monkeypatch, base: Path) -> None:
     output_dir = base / "output"
-    monkeypatch.setattr(pipeline, "OUTPUT_DIR", str(output_dir))
-    monkeypatch.setattr(pipeline, "RUNS_DIR", str(output_dir / "runs"))
-    monkeypatch.setattr(pipeline, "LATEST_RUN_FILE", str(output_dir / "latest_run.txt"))
+    monkeypatch.setattr(coordinator_mod, "OUTPUT_DIR", str(output_dir))
+    monkeypatch.setattr(coordinator_mod, "RUNS_DIR", str(output_dir / "runs"))
+    monkeypatch.setattr(coordinator_mod, "LATEST_RUN_FILE", str(output_dir / "latest_run.txt"))
 
 
 def test_sanitize_run_id() -> None:
-    assert Pipeline._sanitize_run_id(" demo / run ") == "demo-run"
+    assert Coordinator._sanitize_run_id(" demo / run ") == "demo-run"
 
 
 def test_init_run_storage_writes_latest_run(monkeypatch, tmp_path: Path) -> None:
     _patch_output_paths(monkeypatch, tmp_path)
-    p = Pipeline(llm=None)  # type: ignore[arg-type]
+    c = Coordinator(llm=None, mode="explain")  # type: ignore[arg-type]
 
-    p._init_run_storage(resume_from=None, run_id="my run")
+    c._init_run_storage(resume_from=None, run_id="my run")
 
-    assert p.run_id == "my-run"
-    assert Path(p.run_dir).is_dir()
+    assert c.run_id == "my-run"
+    assert Path(c.run_dir).is_dir()
     latest = (tmp_path / "output" / "latest_run.txt").read_text(encoding="utf-8")
     assert latest == "my-run"
 
@@ -38,19 +38,19 @@ def test_resume_reuses_latest_run(monkeypatch, tmp_path: Path) -> None:
     latest_file.parent.mkdir(parents=True, exist_ok=True)
     latest_file.write_text("saved-run", encoding="utf-8")
 
-    p = Pipeline(llm=None)  # type: ignore[arg-type]
-    p._init_run_storage(resume_from="analyze", run_id=None)
+    c = Coordinator(llm=None, mode="explain")  # type: ignore[arg-type]
+    c._init_run_storage(resume_from="analyze", run_id=None)
 
-    assert p.run_id == "saved-run"
-    assert p.run_dir.endswith("output/runs/saved-run")
+    assert c.run_id == "saved-run"
+    assert c.run_dir.endswith("output/runs/saved-run")
 
 
 def test_load_source_from_previous_stage(tmp_path: Path) -> None:
-    p = Pipeline(llm=None)  # type: ignore[arg-type]
-    p.run_dir = str(tmp_path)
+    c = Coordinator(llm=None, mode="explain")  # type: ignore[arg-type]
+    c.run_dir = str(tmp_path)
     save_stage_output({"url": "https://example.com/article"}, str(tmp_path / "fetch.json"))
 
-    assert p._load_source("") == "https://example.com/article"
+    assert c._load_source("") == "https://example.com/article"
 
 
 def test_build_reading_report() -> None:
@@ -63,7 +63,7 @@ def test_build_reading_report() -> None:
         concepts=["concept1", "concept2"],
     )
 
-    report = Pipeline._build_reading_report(analysis)
+    report = Coordinator._build_reading_report(analysis)
 
     assert report.title == "Test Article"
     assert report.source_url == "https://example.com/article"
@@ -91,4 +91,3 @@ def test_fetch_result_to_dict_includes_method() -> None:
     data = result.to_dict()
 
     assert data["method"] == "crawl4ai"
-

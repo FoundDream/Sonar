@@ -5,7 +5,7 @@ import sys
 
 from dotenv import load_dotenv
 
-from pipeline import Pipeline
+from agents.coordinator import Coordinator
 from tools.llm import LLMClient
 
 
@@ -34,9 +34,9 @@ def main():
     source = args.source or ""
     print(f"Sonar - 正在分析: {source or '(从缓存恢复)'}\n")
 
-    pipeline = Pipeline(llm, mode=args.mode, goal=args.goal)
+    coordinator = Coordinator(llm, mode=args.mode, goal=args.goal)
     try:
-        output_path = pipeline.run(source, resume_from=args.resume_from, run_id=args.run_id or None)
+        output_path = coordinator.run(source, resume_from=args.resume_from, run_id=args.run_id or None)
     except (RuntimeError, ValueError) as e:
         print(f"\n错误: {e}")
         sys.exit(1)

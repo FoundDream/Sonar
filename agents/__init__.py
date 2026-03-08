@@ -2,10 +2,10 @@
 
 from .analyzer import Analyzer
 from .base import Agent
-from .planner import Planner
+from .coordinator import Coordinator
 from .researcher import Researcher
 from .reviewer import Reviewer
 from .synthesizer import Synthesizer
 from .verifier import Verifier
 
-__all__ = ["Agent", "Analyzer", "Planner", "Researcher", "Reviewer", "Synthesizer", "Verifier"]
+__all__ = ["Agent", "Analyzer", "Coordinator", "Researcher", "Reviewer", "Synthesizer", "Verifier"]
