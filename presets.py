@@ -1,4 +1,4 @@
-"""预设配置：explain / academic 模式。"""
+"""模式配置：explain / academic 的 schema、sections 和 prompt。"""
 
 from stages.models import FieldSpec, ResearchPlan, SectionSpec
 from stages.prompts.research import RESEARCH_RESEARCHER_PROMPT, RESEARCHER_PROMPT
