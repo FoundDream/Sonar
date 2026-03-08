@@ -1,4 +1,4 @@
-"""本地文件抓取测试：验证 FetchStage 对各种本地文件格式的读取能力。
+"""本地文件抓取测试：验证各种本地文件格式的读取能力。
 
 不需要网络，直接运行：uv run python -m pytest tests/test_fetch_file.py -v
 """
@@ -7,13 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from stages.fetch import FetchStage, is_local_file
-from stages.models import FetchResult
-
-
-@pytest.fixture
-def stage():
-    return FetchStage(llm=None)
+from fetchers import fetch_source, is_local_file
+from models import FetchResult
 
 
 class TestIsLocalFile:
@@ -31,7 +26,7 @@ class TestIsLocalFile:
 
 
 class TestLocalFiles:
-    def test_markdown_file(self, stage, tmp_path: Path) -> None:
+    def test_markdown_file(self, tmp_path: Path) -> None:
         f = tmp_path / "article.md"
         f.write_text(
             "# 深度学习入门\n\n本文介绍深度学习的基本概念。\n\n"
@@ -39,7 +34,7 @@ class TestLocalFiles:
             "## 反向传播\n\n反向传播算法用于训练神经网络。",
             encoding="utf-8",
         )
-        result = stage.run(str(f))
+        result = fetch_source(str(f))
 
         assert isinstance(result, FetchResult)
         assert result.source_type == "file"
@@ -47,16 +42,16 @@ class TestLocalFiles:
         assert "深度学习" in result.content
         assert result.word_count > 0
 
-    def test_txt_file(self, stage, tmp_path: Path) -> None:
+    def test_txt_file(self, tmp_path: Path) -> None:
         f = tmp_path / "notes.txt"
         f.write_text("这是一份纯文本笔记。\n包含多行内容。\n用于验证功能。", encoding="utf-8")
-        result = stage.run(str(f))
+        result = fetch_source(str(f))
 
         assert isinstance(result, FetchResult)
         assert result.source_type == "file"
         assert "纯文本笔记" in result.content
 
-    def test_html_file(self, stage, tmp_path: Path) -> None:
+    def test_html_file(self, tmp_path: Path) -> None:
         f = tmp_path / "page.html"
         f.write_text(
             '<!DOCTYPE html><html><head><title>测试页面</title></head>'
@@ -65,13 +60,13 @@ class TestLocalFiles:
             "</article></body></html>",
             encoding="utf-8",
         )
-        result = stage.run(str(f))
+        result = fetch_source(str(f))
 
         assert isinstance(result, FetchResult)
         assert result.source_type == "file"
         assert "正文内容" in result.content
 
-    def test_pdf_file(self, stage, tmp_path: Path) -> None:
+    def test_pdf_file(self, tmp_path: Path) -> None:
         pymupdf = pytest.importorskip("pymupdf")
         pdf_path = tmp_path / "doc.pdf"
 
@@ -81,34 +76,34 @@ class TestLocalFiles:
         doc.save(str(pdf_path))
         doc.close()
 
-        result = stage.run(str(pdf_path))
+        result = fetch_source(str(pdf_path))
 
         assert isinstance(result, FetchResult)
         assert result.source_type == "file"
         assert "Deep Learning" in result.content or "Neural" in result.content
 
-    def test_empty_file_returns_error(self, stage, tmp_path: Path) -> None:
+    def test_empty_file_returns_error(self, tmp_path: Path) -> None:
         f = tmp_path / "empty.md"
         f.write_text("", encoding="utf-8")
-        result = stage.run(str(f))
+        result = fetch_source(str(f))
 
         assert isinstance(result, dict)
         assert "error" in result
 
-    def test_unsupported_extension_returns_error(self, stage, tmp_path: Path) -> None:
+    def test_unsupported_extension_returns_error(self, tmp_path: Path) -> None:
         f = tmp_path / "data.csv"
         f.write_text("a,b,c\n1,2,3", encoding="utf-8")
-        result = stage.run(str(f))
+        result = fetch_source(str(f))
 
         assert isinstance(result, dict)
         assert "error" in result
         assert ".csv" in result["error"]
 
-    def test_large_file_gets_truncated(self, stage, tmp_path: Path) -> None:
+    def test_large_file_gets_truncated(self, tmp_path: Path) -> None:
         f = tmp_path / "large.md"
         content = "# 大文件测试\n\n" + ("这是重复内容用于测试截断功能。" * 1000)
         f.write_text(content, encoding="utf-8")
-        result = stage.run(str(f))
+        result = fetch_source(str(f))
 
         assert isinstance(result, FetchResult)
         assert result.was_truncated is True

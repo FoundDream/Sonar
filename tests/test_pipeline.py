@@ -1,15 +1,12 @@
 from pathlib import Path
 
 import pipeline
-from pipeline import Pipeline
-from stages.models import (
+from models import (
     AnalysisResult,
     FetchResult,
-    ReportData,
-    ResearchPlan,
-    ResearchResult,
     save_stage_output,
 )
+from pipeline import Pipeline
 
 
 def _patch_output_paths(monkeypatch, base: Path) -> None:

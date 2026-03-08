@@ -3,7 +3,7 @@
 from collections.abc import Callable
 
 from fetchers.base import BaseFetcher, FetchError
-from stages.models import FetchResult
+from models import FetchResult
 from tools.fetch import fetch_article
 
 

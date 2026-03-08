@@ -3,7 +3,7 @@
 import os
 
 from fetchers.base import BaseFetcher, FetchError
-from stages.models import FetchResult
+from models import FetchResult
 from tools.extract import smart_truncate
 
 _SUPPORTED_EXTENSIONS = {".pdf", ".md", ".txt", ".html", ".htm"}

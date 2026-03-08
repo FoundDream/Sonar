@@ -1,53 +1,20 @@
-"""Analyze 阶段：LLM 分析文章，提取摘要、速览、核心概念。"""
+"""分析器：LLM 分析文章，提取摘要、速览、核心概念。"""
 
 import json
 
 from llm.client import LLMClient
-from stages.models import AnalysisResult, FetchResult
 
+from models import AnalysisResult, FetchResult
 
-class AnalyzeStage:
-    def __init__(self, llm: LLMClient):
-        self.llm = llm
+# ── Prompt ────────────────────────────────────────────────────────
 
-    def run(self, fetch_result: FetchResult) -> AnalysisResult | dict:
-        """分析文章，返回 AnalysisResult 或 error dict。"""
-        print("\n--- 分析文章 ---")
-        analysis = self._analyze_article(fetch_result)
+ANALYZE_PROMPT = """\
+请分析以下文章，返回 JSON 格式的结果：
 
-        result = AnalysisResult(
-            url=fetch_result.url,
-            article_title=fetch_result.title,
-            article_summary=analysis.get("summary", ""),
-            overview=analysis.get("overview", {}),
-            article_analysis=analysis.get("article_analysis", {}),
-            concepts=analysis.get("concepts", []),
-        )
-
-        if result.overview:
-            difficulty = result.overview.get("difficulty", "?")
-            recommendation = result.overview.get("recommendation", "?")
-            print(f"[分析] 难度: {difficulty}, 建议: {recommendation}")
-        print(f"[分析] 摘要: {result.article_summary[:80]}...")
-        if result.article_analysis.get("main_thesis"):
-            print(f"[分析] 核心论点: {result.article_analysis['main_thesis'][:80]}...")
-        print(f"[分析] 识别到 {len(result.concepts)} 个核心概念: {', '.join(result.concepts)}")
-
-        if not result.concepts:
-            return {"error": "未能从文章中识别出核心概念"}
-
-        return result
-
-    def _analyze_article(self, fetch_result: FetchResult) -> dict:
-        """让 LLM 对文章做速览、摘要并提取核心概念。"""
-        messages = [
-            {"role": "system", "content": "你是一个学术文章分析助手。"},
-            {"role": "user", "content": f"""请分析以下文章，返回 JSON 格式的结果：
-
-标题: {fetch_result.title}
+标题: {title}
 
 正文:
-{fetch_result.content}
+{content}
 
 请返回严格的 JSON（不要 markdown 代码块），包含：
 
@@ -96,7 +63,52 @@ class AnalyzeStage:
     "author_takeaway": "最终作者想强调..."
   }},
   "concepts": ["概念A", "概念B", "概念C"]
-}}"""},
+}}"""
+
+
+# ── Agent ─────────────────────────────────────────────────────────
+
+class Analyzer:
+    """分析文章内容，提取结构化信息。"""
+
+    def __init__(self, llm: LLMClient):
+        self.llm = llm
+
+    def analyze(self, fetch_result: FetchResult) -> AnalysisResult | dict:
+        """分析文章，返回 AnalysisResult 或 error dict。"""
+        print("\n--- 分析文章 ---")
+        analysis = self._call_llm(fetch_result)
+
+        result = AnalysisResult(
+            url=fetch_result.url,
+            article_title=fetch_result.title,
+            article_summary=analysis.get("summary", ""),
+            overview=analysis.get("overview", {}),
+            article_analysis=analysis.get("article_analysis", {}),
+            concepts=analysis.get("concepts", []),
+        )
+
+        if result.overview:
+            difficulty = result.overview.get("difficulty", "?")
+            recommendation = result.overview.get("recommendation", "?")
+            print(f"[分析] 难度: {difficulty}, 建议: {recommendation}")
+        print(f"[分析] 摘要: {result.article_summary[:80]}...")
+        if result.article_analysis.get("main_thesis"):
+            print(f"[分析] 核心论点: {result.article_analysis['main_thesis'][:80]}...")
+        print(f"[分析] 识别到 {len(result.concepts)} 个核心概念: {', '.join(result.concepts)}")
+
+        if not result.concepts:
+            return {"error": "未能从文章中识别出核心概念"}
+
+        return result
+
+    def _call_llm(self, fetch_result: FetchResult) -> dict:
+        messages = [
+            {"role": "system", "content": "你是一个学术文章分析助手。"},
+            {"role": "user", "content": ANALYZE_PROMPT.format(
+                title=fetch_result.title,
+                content=fetch_result.content,
+            )},
         ]
         resp = self.llm.chat(messages)
         content = resp.get("content", "")

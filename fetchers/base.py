@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 
-from stages.models import FetchResult
+from models import FetchResult
 
 
 class FetchError(Exception):

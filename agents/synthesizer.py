@@ -1,23 +1,111 @@
-"""Synthesize 阶段：分类概念、组装报告数据。"""
+"""合成器：分类概念、组装报告数据。"""
 
 import json
 from urllib.parse import urlparse
 
 from llm.client import LLMClient
+
+from models import ReportData, ResearchPlan, ResearchResult
 from report.schema import format_issues, has_errors, validate_report
-from stages.models import ReportData, ResearchPlan, ResearchResult
-from stages.prompts.synthesize import CLASSIFY_TOOL, SYNTHESIZER_PROMPT
 from tools.search import BLOCKED_DOMAINS
+
+# ── Prompt ────────────────────────────────────────────────────────
+
+SYNTHESIZER_PROMPT = """\
+你是 Sonar 的报告编辑。
+
+研究员已经为每个概念收集了详细的解释和学习资料。你不需要重复这些内容。
+
+你需要做三件事：
+
+1. 把概念分类为"前置知识"或"核心概念"
+   - 前置知识：读者需要先了解的背景知识（2-4 个）
+   - 核心概念：文章直接讨论的重要概念（3-5 个）
+
+2. 为前置知识标注优先级
+   - must: 不了解就无法理解文章
+   - should: 了解了会更好，但不是必须
+
+3. 编排学习路径
+   - 每一步是一个可执行的学习动作，如"先理解 Transformer 的自注意力机制"
+   - 每一步补充这一阶段的学习目标，以及为什么这一步排在这里
+   - 每一步关联到具体的概念名称（可以关联多个）
+   - 顺序必须合理：先前置，再核心，由浅入深
+   - 不允许只是把概念名平铺成列表
+
+调用 classify_concepts 提交分类结果。
+"""
+
+# ── Tool ──────────────────────────────────────────────────────────
+
+CLASSIFY_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "classify_concepts",
+        "description": "对已研究的概念进行分类、标注优先级、编排学习路径。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "prerequisites": {
+                    "type": "array",
+                    "description": "前置知识列表（2-4 个，按学习顺序排列）",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string", "description": "概念名称（必须与已研究的概念名一致）"},
+                            "priority": {
+                                "type": "string",
+                                "enum": ["must", "should"],
+                                "description": "must=不了解就无法理解文章, should=了解了会更好",
+                            },
+                            "why_learn_first": {
+                                "type": "string",
+                                "description": "为什么要先学这个概念（一句话）",
+                            },
+                        },
+                        "required": ["name", "priority", "why_learn_first"],
+                    },
+                },
+                "concepts": {
+                    "type": "array",
+                    "description": "核心概念名称列表（3-5 个，按学习顺序排列）",
+                    "items": {"type": "string"},
+                },
+                "learning_path": {
+                    "type": "array",
+                    "description": "学习路径，每步是可执行动作 + 关联概念",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "step": {"type": "string", "description": "学习动作描述，如'先理解自注意力机制的工作原理'"},
+                            "goal": {"type": "string", "description": "这一阶段想建立什么理解"},
+                            "reason": {"type": "string", "description": "为什么这一步应该排在这里"},
+                            "concepts": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "这一步关联的概念名称列表",
+                            },
+                        },
+                        "required": ["step", "goal", "reason", "concepts"],
+                    },
+                },
+            },
+            "required": ["prerequisites", "concepts", "learning_path"],
+        },
+    },
+}
 
 _SKIP_FIELDS = {"name", "resources"}
 
 
-class SynthesizeStage:
+# ── Agent ─────────────────────────────────────────────────────────
+
+class Synthesizer:
     def __init__(self, llm: LLMClient, plan: ResearchPlan | None = None):
         self.llm = llm
         self.plan = plan
 
-    def run(self, research: ResearchResult) -> ReportData:
+    def synthesize(self, research: ResearchResult) -> ReportData:
         classification = self._classify(research)
         report_dict = self._assemble(research, classification)
         return ReportData.from_dict(report_dict)
@@ -57,7 +145,6 @@ class SynthesizeStage:
         return None
 
     def _extract_finding_fields(self, finding: dict) -> dict:
-        """Extract fields from a finding using the plan's schema."""
         if self.plan and self.plan.finding_schema:
             return {
                 field.name: finding.get(field.name, "")
@@ -65,7 +152,6 @@ class SynthesizeStage:
                 if field.name not in _SKIP_FIELDS
             }
 
-        # Fallback: hardcoded explain fields (for reading mode / no plan)
         return {
             "explanation": finding.get("explanation", ""),
             "why_important": finding.get("why_important", ""),
@@ -164,10 +250,7 @@ class SynthesizeStage:
             overview["recommendation"] = "skim_first"
             print("[修正] overview.recommendation: deep_read → skim_first（存在前置知识）")
 
-        # Build deduplicated reading list from all resources
         paper_list = self._build_paper_list(prerequisites, concepts)
-
-        # Build sections list for modular template rendering
         sections = self._build_sections(overview, research, prerequisites, concepts, learning_path, paper_list)
 
         report = {
@@ -200,39 +283,26 @@ class SynthesizeStage:
     def _build_sections(
         self, overview, research, prerequisites, concepts, learning_path, paper_list=None
     ) -> list[dict]:
-        """Build sections list for section-based template rendering."""
         sections = []
-
         if overview:
             sections.append({"type": "overview"})
-
         sections.append({"type": "summary"})
-
         if research.article_analysis:
             sections.append({"type": "analysis"})
-
         if prerequisites or concepts:
             sections.append({"type": "toc"})
-
         if learning_path:
             sections.append({"type": "learning_path"})
-
         if prerequisites:
             sections.append({"type": "prerequisites"})
-
         if concepts:
             sections.append({"type": "concepts"})
-
         if paper_list:
             sections.append({"type": "paper_list"})
-
         return sections
 
     @staticmethod
-    def _build_paper_list(
-        prerequisites: list[dict], concepts: list[dict]
-    ) -> list[dict]:
-        """Aggregate resources from all concepts into a deduplicated reading list."""
+    def _build_paper_list(prerequisites: list[dict], concepts: list[dict]) -> list[dict]:
         seen_urls: set[str] = set()
         papers = []
         for item in [*prerequisites, *concepts]:

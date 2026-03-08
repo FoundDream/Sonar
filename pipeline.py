@@ -1,16 +1,24 @@
-"""Pipeline 编排器：orchestrator 模式，支持 review → research 返工循环和断点恢复。"""
+"""Pipeline 编排器：orchestrator 模式，直接协调 agents，支持 review → research 返工循环。"""
 
 import os
 import re
 import shutil
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from uuid import uuid4
 
 from llm.client import LLMClient
-from report.renderer import render_report
-from stages.analyze import AnalyzeStage
-from stages.fetch import FetchStage
-from stages.models import (
+
+from agents.analyzer import Analyzer
+from agents.planner import Planner
+from agents.researcher import EMPTY_FINDING, Researcher, build_finding_tool
+from agents.reviewer import Reviewer
+from agents.synthesizer import Synthesizer
+from agents.verifier import Verifier
+from fetchers import get_fetcher
+from fetchers.base import FetchError
+from fetchers.url import URLFetcher
+from models import (
     AnalysisResult,
     FetchResult,
     ReportData,
@@ -19,19 +27,18 @@ from stages.models import (
     load_stage_output,
     save_stage_output,
 )
-from stages.research import ResearchStage
-from stages.review import ReviewStage
-from stages.synthesize import SynthesizeStage
+from report.renderer import render_report
+from tools.quality import make_quality_checker
 
 OUTPUT_DIR = "output"
 RUNS_DIR = os.path.join(OUTPUT_DIR, "runs")
 LATEST_RUN_FILE = os.path.join(OUTPUT_DIR, "latest_run.txt")
 LEGACY_RUN_ID = "__legacy__"
 
-# Resume-able stages (review is not independently resumable)
 STAGE_ORDER = ["fetch", "analyze", "plan", "research", "synthesize"]
 
 MAX_REVIEW_CYCLES = 1
+MAX_VERIFY_RETRIES = 1
 
 
 class Pipeline:
@@ -71,16 +78,15 @@ class Pipeline:
             )
 
         if not analysis and not fetch_result:
-            stage = FetchStage(self.llm)
-            result = stage.run(source)
+            result = self._fetch(source)
             if isinstance(result, dict) and "error" in result:
                 raise RuntimeError(result["error"])
             fetch_result = result
             save_stage_output(fetch_result.to_dict(), self._stage_path("fetch"))
 
         if not analysis:
-            stage = AnalyzeStage(self.llm)
-            result = stage.run(fetch_result)
+            analyzer = Analyzer(self.llm)
+            result = analyzer.analyze(fetch_result)
             if isinstance(result, dict) and "error" in result:
                 raise RuntimeError(result["error"])
             analysis = result
@@ -111,7 +117,6 @@ class Pipeline:
     # ── Orchestrated mode (with review loop) ──────────────────────
 
     def _run_orchestrated(self, source: str, resume_from: str | None = None) -> str:
-        """Orchestrator: dispatch steps with transitions, supporting review→research loop."""
         if resume_from:
             if resume_from not in STAGE_ORDER:
                 raise ValueError(f"Unknown stage: {resume_from}. Valid: {STAGE_ORDER}")
@@ -119,25 +124,20 @@ class Pipeline:
         else:
             start_step = "fetch"
 
-        # Load cached state for resume
         ctx = self._load_context(source, start_step)
 
-        # Orchestrator loop
         step = start_step
         while step:
             step = self._execute_step(step, ctx)
 
-        # Render HTML
         output_path = render_report(ctx["report_data"].to_dict(), self._report_path())
         self._publish_latest_report(output_path)
         return output_path
 
     def _execute_step(self, step: str, ctx: dict) -> str | None:
-        """Execute a step and return the next step (or None to stop)."""
 
         if step == "fetch":
-            stage = FetchStage(self.llm)
-            result = stage.run(ctx["source"])
+            result = self._fetch(ctx["source"])
             if isinstance(result, dict) and "error" in result:
                 raise RuntimeError(result["error"])
             ctx["fetch_result"] = result
@@ -145,8 +145,8 @@ class Pipeline:
             return "analyze"
 
         if step == "analyze":
-            stage = AnalyzeStage(self.llm)
-            result = stage.run(ctx["fetch_result"])
+            analyzer = Analyzer(self.llm)
+            result = analyzer.analyze(ctx["fetch_result"])
             if isinstance(result, dict) and "error" in result:
                 raise RuntimeError(result["error"])
             ctx["analysis"] = result
@@ -154,49 +154,166 @@ class Pipeline:
             return "plan"
 
         if step == "plan":
-            from stages.plan import PlanStage
-            stage = PlanStage(self.llm)
-            ctx["plan"] = stage.run(self.preset, self.goal, ctx["analysis"])
+            planner = Planner(self.llm)
+            ctx["plan"] = planner.plan(self.preset, self.goal, ctx["analysis"])
             save_stage_output(ctx["plan"].to_dict(), self._stage_path("plan"))
             return "research"
 
         if step == "research":
-            stage = ResearchStage(self.llm, ctx.get("plan"))
-            ctx["research"] = stage.run(ctx["analysis"])
+            plan = ctx.get("plan")
+            ctx["research"] = self._research(ctx["analysis"], plan)
             save_stage_output(ctx["research"].to_dict(), self._stage_path("research"))
             return "review"
 
         if step == "review":
-            review_stage = ReviewStage(self.llm, ctx.get("plan"))
-            review = review_stage.run(ctx["research"])
+            reviewer = Reviewer(self.llm)
+            review = reviewer.review(ctx["research"])
 
             cycle = ctx.get("review_cycle", 0)
             if not review.passed and cycle < MAX_REVIEW_CYCLES:
                 ctx["review_cycle"] = cycle + 1
-                # Rework flagged concepts
-                research_stage = ResearchStage(self.llm, ctx.get("plan"))
-                ctx["research"] = research_stage.rework(ctx["research"], review.rework)
+                plan = ctx.get("plan")
+                ctx["research"] = self._rework(ctx["research"], review.rework, plan)
                 save_stage_output(ctx["research"].to_dict(), self._stage_path("research"))
-                # Re-review after rework
                 return "review"
             return "synthesize"
 
         if step == "synthesize":
-            stage = SynthesizeStage(self.llm, ctx.get("plan"))
-            ctx["report_data"] = stage.run(ctx["research"])
+            synthesizer = Synthesizer(self.llm, ctx.get("plan"))
+            ctx["report_data"] = synthesizer.synthesize(ctx["research"])
             save_stage_output(ctx["report_data"].to_dict(), self._stage_path("synthesize"))
             return None
 
         raise ValueError(f"Unknown step: {step}")
 
+    # ── Fetch ─────────────────────────────────────────────────────
+
+    def _fetch(self, source: str) -> FetchResult | dict:
+        try:
+            fetcher = get_fetcher(source)
+            if isinstance(fetcher, URLFetcher):
+                fetcher.quality_checker = make_quality_checker(llm=self.llm)
+            return fetcher.fetch(source)
+        except FetchError as e:
+            return {"error": str(e)}
+
+    # ── Research orchestration ────────────────────────────────────
+
+    def _research(self, analysis: AnalysisResult, plan: ResearchPlan | None) -> ResearchResult:
+        if plan and plan.selected_concepts:
+            concepts = plan.selected_concepts
+        else:
+            concepts = analysis.concepts
+
+        print(f"\n--- 并行研究 {len(concepts)} 个概念 ---")
+        findings = self._research_concepts(concepts, analysis.article_summary, plan)
+        print("\n--- 所有概念研究完成 ---")
+
+        return ResearchResult(
+            url=analysis.url,
+            article_title=analysis.article_title,
+            article_summary=analysis.article_summary,
+            overview=analysis.overview,
+            article_analysis=analysis.article_analysis,
+            concepts=analysis.concepts,
+            findings=findings,
+        )
+
+    def _rework(
+        self, research: ResearchResult, rework_items: list, plan: ResearchPlan | None
+    ) -> ResearchResult:
+        feedback_map = {item.concept: item.feedback for item in rework_items}
+        concepts_to_redo = list(feedback_map.keys())
+
+        print(f"\n--- 返工 {len(concepts_to_redo)} 个概念 ---")
+
+        base_hints = plan.concept_hints if plan else {}
+        extra_hints = {}
+        for concept in concepts_to_redo:
+            base = base_hints.get(concept, "")
+            feedback = feedback_map.get(concept, "")
+            extra_hints[concept] = f"{base}\n上一轮审查反馈：{feedback}".strip() if feedback else base
+
+        findings = self._research_concepts(
+            concepts_to_redo, research.article_summary, plan, hint_overrides=extra_hints
+        )
+
+        print("\n--- 返工完成 ---")
+
+        updated_findings = dict(research.findings)
+        updated_findings.update(findings)
+
+        return ResearchResult(
+            url=research.url,
+            article_title=research.article_title,
+            article_summary=research.article_summary,
+            overview=research.overview,
+            article_analysis=research.article_analysis,
+            concepts=research.concepts,
+            findings=updated_findings,
+        )
+
+    def _research_concepts(
+        self, concepts: list[str], summary: str,
+        plan: ResearchPlan | None,
+        hint_overrides: dict[str, str] | None = None,
+    ) -> dict[str, dict]:
+        finding_tool = None
+        finding_schema = None
+        if plan and plan.finding_schema:
+            finding_tool = build_finding_tool(plan.finding_schema)
+            finding_schema = plan.finding_schema
+
+        researcher_prompt = plan.researcher_prompt if plan else None
+        base_hints = plan.concept_hints if plan else {}
+
+        def _research_one(concept: str) -> tuple[str, dict]:
+            researcher = Researcher(self.llm, finding_tool, researcher_prompt, finding_schema)
+            verifier = Verifier(self.llm, finding_schema)
+
+            hints = (hint_overrides or {}).get(concept, base_hints.get(concept, ""))
+            result = researcher.research(concept, summary, hints=hints)
+
+            for attempt in range(1 + MAX_VERIFY_RETRIES):
+                verdict = verifier.verify(result, summary)
+                if verdict.get("pass", True):
+                    print(f"  [审查] {concept}: 通过")
+                    break
+                if attempt < MAX_VERIFY_RETRIES:
+                    feedback = verdict.get("feedback", "")
+                    combined_hints = f"{hints}\n{feedback}".strip() if hints else feedback
+                    print(f"  [审查] {concept}: 未通过，重新研究 — {feedback[:80]}")
+                    result = researcher.research(concept, summary, hints=combined_hints)
+                else:
+                    print(f"  [审查] {concept}: 重试后仍未通过，保留当前结果")
+
+            return concept, result
+
+        findings: dict[str, dict] = {}
+
+        with ThreadPoolExecutor(max_workers=min(len(concepts), 4)) as pool:
+            futures = {pool.submit(_research_one, c): c for c in concepts}
+            for future in as_completed(futures):
+                concept = futures[future]
+                try:
+                    _, result = future.result()
+                    findings[concept] = result
+                    n_resources = len(result.get("resources", []))
+                    print(f"[完成] {concept}: {n_resources} 条资料")
+                except Exception as e:
+                    print(f"[错误] {concept} 研究失败: {e}")
+                    findings[concept] = dict(EMPTY_FINDING, name=concept)
+
+        return findings
+
+    # ── Context loading (for resume) ──────────────────────────────
+
     def _load_context(self, source: str, start_step: str) -> dict:
-        """Load cached stage outputs needed for the start step."""
         ctx: dict = {"source": source}
 
         if start_step == "fetch":
             return ctx
 
-        # Need source from prior outputs if not provided
         if not source:
             ctx["source"] = self._load_source(source)
 

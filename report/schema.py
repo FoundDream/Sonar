@@ -323,7 +323,7 @@ def validate_report(data: dict) -> list[Issue]:
 def validate_finding(data: dict, field_specs: list) -> list[Issue]:
     """按 FieldSpec 列表校验 finding 数据。
 
-    field_specs: list of FieldSpec (from stages.models)
+    field_specs: list of FieldSpec (from models)
     """
     issues = []
 

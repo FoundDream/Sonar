@@ -1,8 +1,8 @@
 """模式配置：统一的 explain preset（schema、sections 和 prompt）。"""
 
-from agents.researcher.prompt import RESEARCHER_PROMPT
-from stages.models import FieldSpec, ResearchPlan, SectionSpec
-from stages.prompts.synthesize import CLASSIFY_TOOL, SYNTHESIZER_PROMPT
+from agents.researcher import RESEARCHER_PROMPT
+from agents.synthesizer import CLASSIFY_TOOL, SYNTHESIZER_PROMPT
+from models import FieldSpec, ResearchPlan, SectionSpec
 
 
 def _finding_schema() -> list[FieldSpec]:

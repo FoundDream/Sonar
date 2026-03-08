@@ -6,13 +6,20 @@
 
 import pytest
 
-from stages.fetch import FetchStage
-from stages.models import FetchResult
+from fetchers import fetch_source
+from models import FetchResult
+
+
+class _FetchHelper:
+    """Thin wrapper to keep test interface (stage.run) working."""
+    @staticmethod
+    def run(source: str):
+        return fetch_source(source)
 
 
 @pytest.fixture
 def stage():
-    return FetchStage(llm=None)
+    return _FetchHelper()
 
 
 @pytest.mark.network
