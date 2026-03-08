@@ -1,4 +1,4 @@
-"""Prompts and tools for research verification."""
+"""审查员 Agent 的系统 prompt。"""
 
 VERIFIER_PROMPT = """\
 你是 Sonar 的质量审查员。你的任务是审查研究员对一个概念的研究结果。
@@ -19,25 +19,3 @@ VERIFIER_PROMPT = """\
 
 调用 verify_result 提交你的审查结果。
 """
-
-VERIFY_TOOL = {
-    "type": "function",
-    "function": {
-        "name": "verify_result",
-        "description": "提交对研究结果的审查判定。",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "pass": {
-                    "type": "boolean",
-                    "description": "true=通过, false=不通过需要重新研究",
-                },
-                "feedback": {
-                    "type": "string",
-                    "description": "如果不通过，给研究员的具体修改建议（会直接转发给研究员作为重新研究的提示）",
-                },
-            },
-            "required": ["pass", "feedback"],
-        },
-    },
-}

@@ -1,5 +1,16 @@
-"""Reusable tool schemas for stage prompts."""
+"""研究员 Agent 的工具定义。"""
 
+from stages.models import FieldSpec
+
+EMPTY_FINDING = {
+    "name": "",
+    "explanation": "",
+    "why_important": "",
+    "article_role": "",
+    "example": "",
+    "analogy": "",
+    "resources": [],
+}
 
 CONCEPT_DONE_TOOL = {
     "type": "function",
@@ -35,7 +46,7 @@ CONCEPT_DONE_TOOL = {
 }
 
 
-def build_finding_tool(field_specs: list) -> dict:
+def build_finding_tool(field_specs: list[FieldSpec]) -> dict:
     """Build a concept_done tool schema from plan-defined fields."""
     properties = {}
     required = []

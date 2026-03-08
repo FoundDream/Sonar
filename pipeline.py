@@ -167,7 +167,7 @@ class Pipeline:
             return "review"
 
         if step == "review":
-            review_stage = ReviewStage(ctx.get("plan"))
+            review_stage = ReviewStage(self.llm, ctx.get("plan"))
             review = review_stage.run(ctx["research"])
 
             cycle = ctx.get("review_cycle", 0)

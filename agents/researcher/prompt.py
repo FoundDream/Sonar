@@ -1,4 +1,4 @@
-"""Prompts for the research stage."""
+"""研究员 Agent 的系统 prompt。"""
 
 RESEARCHER_PROMPT = """\
 你是 Sonar 的研究员。你的任务是帮助读者理解文章中的关键概念。

@@ -44,23 +44,28 @@ Fetch → Analyze → Plan → Research → Synthesize → render_report
 
 ### 关键文件
 
-| 文件                   | 职责                                                                  |
-| ---------------------- | --------------------------------------------------------------------- |
-| `main.py`              | CLI 入口，定义 `--mode` 的合法值                                      |
-| `pipeline.py`          | 编排 stages，mode 直接作为 preset 名传入                              |
-| `fetchers/`            | 输入源抽象层：`BaseFetcher` ABC + 路由注册                           |
-| `fetchers/base.py`     | `BaseFetcher` 接口、`FetchError` 异常                                |
-| `fetchers/url.py`      | `URLFetcher` — 包装 `tools/fetch.fetch_article()`                    |
+| 文件                     | 职责                                                                |
+| ------------------------ | ------------------------------------------------------------------- |
+| `main.py`                | CLI 入口，定义 `--mode` 的合法值                                    |
+| `pipeline.py`            | Orchestrator：dispatch + transition，支持 review→research 循环     |
+| `agents/base.py`         | Agent 基类：统一的 LLM 工具调用循环                                 |
+| `agents/researcher/`     | Researcher — 搜索资料、研究单个概念（prompt + tools + agent）      |
+| `agents/verifier/`       | Verifier — 审查单个概念的研究质量（prompt + tools + agent）        |
+| `agents/reviewer/`       | Reviewer — LLM-powered 报告级质量审查（prompt + tools + agent）    |
+| `fetchers/`              | 输入源抽象层：`BaseFetcher` ABC + 路由注册                         |
+| `fetchers/base.py`       | `BaseFetcher` 接口、`FetchError` 异常                              |
+| `fetchers/url.py`        | `URLFetcher` — 包装 `tools/fetch.fetch_article()`                  |
 | `fetchers/local_file.py` | `LocalFileFetcher` — 本地文件读取（pdf/md/txt/html）               |
-| `stages/fetch.py`      | `FetchStage` — 调 `get_fetcher().fetch()`，注入质量检查器            |
-| `tools/quality.py`     | `make_quality_checker()` — 小模型优先、LLM 兜底的内容质量判断       |
-| `tools/classify.py`    | DeBERTa 小模型内容分类（可选依赖 `local-classifier`）               |
-| `presets.py`           | 统一 preset 配置：finding schema、sections、prompt                   |
-| `stages/prompts/`      | 按 stage 拆分的默认 prompt 和 tool schema                             |
-| `stages/models.py`     | 各阶段输入输出的数据模型                                              |
-| `stages/research.py`   | 并行概念研究 + Verifier 质量审查                                      |
-| `stages/synthesize.py` | 概念分类、组装报告数据                                                |
-| `report/`              | HTML 渲染                                                             |
+| `stages/fetch.py`        | `FetchStage` — 调 `get_fetcher().fetch()`，注入质量检查器          |
+| `tools/quality.py`       | `make_quality_checker()` — 小模型优先、LLM 兜底的内容质量判断     |
+| `tools/classify.py`      | DeBERTa 小模型内容分类（可选依赖 `local-classifier`）             |
+| `presets.py`             | 统一 preset 配置：finding schema、sections、prompt                 |
+| `stages/prompts/`        | 非 agent 阶段的 prompt（plan、synthesize）                          |
+| `stages/models.py`       | 各阶段输入输出的数据模型                                            |
+| `stages/research.py`     | ResearchStage — 并行研究编排 + 返工                                |
+| `stages/review.py`       | ReviewStage — 调用 Reviewer，转换审查结果                          |
+| `stages/synthesize.py`   | 概念分类、组装报告数据                                              |
+| `report/`                | HTML 渲染                                                           |
 
 ## 修改 checklist
 
@@ -71,12 +76,14 @@ Fetch → Analyze → Plan → Research → Synthesize → render_report
 
 ### 修改 prompt / schema
 
+- Researcher prompt → `agents/researcher/prompt.py`
+- Researcher tools (concept_done) → `agents/researcher/tools.py`
+- Verifier prompt / tool → `agents/verifier/prompt.py` + `tools.py`
+- Reviewer prompt / tool → `agents/reviewer/prompt.py` + `tools.py`
 - Plan prompt / tool → `stages/prompts/plan.py`
-- Researcher prompt → `stages/prompts/research.py`
-- Verifier prompt / tool → `stages/prompts/verify.py`
 - Synthesizer prompt / classify tool → `stages/prompts/synthesize.py`
 - Finding schema → `presets.py` 的 `_finding_schema()` 函数
-- `concept_done` tool 由 `stages/prompts/schemas.py` 中的 `build_finding_tool(plan.finding_schema)` 动态生成
+- `concept_done` tool 由 `agents/researcher/tools.py` 中的 `build_finding_tool(plan.finding_schema)` 动态生成
 
 ## 输出目录结构
 
