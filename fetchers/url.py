@@ -1,17 +1,22 @@
 """URLFetcher — 包装 tools/fetch.fetch_article() 处理 URL 输入。"""
 
+from collections.abc import Callable
+
 from fetchers.base import BaseFetcher, FetchError
 from stages.models import FetchResult
 from tools.fetch import fetch_article
 
 
 class URLFetcher(BaseFetcher):
+    def __init__(self):
+        self.quality_checker: Callable[[str], bool] | None = None
+
     def can_handle(self, source: str) -> bool:
         return source.startswith(("http://", "https://"))
 
     def fetch(self, source: str) -> FetchResult:
         print("\n--- 抓取文章 ---")
-        result = fetch_article(source)
+        result = fetch_article(source, quality_checker=self.quality_checker)
         if "error" in result:
             raise FetchError(f"抓取失败: {result['error']}")
 

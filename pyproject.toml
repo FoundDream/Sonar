@@ -22,7 +22,6 @@ dependencies = [
 local-classifier = [
     "transformers>=5.3.0",
     "torch>=2.10.0",
-    "huggingface-hub>=1.6.0",
 ]
 
 [project.scripts]

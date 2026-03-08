@@ -220,29 +220,39 @@ def _extract_pdf(data: bytes) -> dict:
 
 # ── 降级链 ──
 
-def _fetch_fallback(url: str) -> dict:
+def _is_usable(result: dict, quality_checker=None) -> bool:
+    """检查抓取结果是否可用：无 error + 通过质量检查。"""
+    if "error" in result:
+        return False
+    if quality_checker and not quality_checker(result.get("content", "")):
+        return False
+    return True
+
+
+def _fetch_fallback(url: str, quality_checker=None) -> dict:
     """降级抓取: 先尝试 httpx(PDF) → Crawl4AI(JS渲染+反爬)。"""
     # 先用轻量 httpx 试一下，主要为了 PDF 检测
     resp = _with_retry(_httpx_get, url)
     httpx_ok = isinstance(resp, httpx.Response)
 
     if httpx_ok:
-        # PDF → pymupdf
+        # PDF → pymupdf（PDF 不做质量检查，有文本就行）
         if _is_pdf_response(resp, url):
             print("  [抓取] 检测到 PDF")
             return _extract_pdf(resp.content)
 
         # HTML → trafilatura
         extracted = extract_content(resp.text, url)
-        if len(extracted["content"]) >= _MIN_CONTENT_LEN:
-            return {**extracted, "method": "httpx"}
-        print(f"  [降级] httpx 内容过短({len(extracted['content'])}字)，尝试 Crawl4AI...")
+        result = {**extracted, "method": "httpx"}
+        if _is_usable(result, quality_checker):
+            return result
+        print("  [降级] httpx 内容质量不足，尝试 Crawl4AI...")
     else:
         print(f"  [降级] httpx 失败({resp['error_type']})，尝试 Crawl4AI...")
 
     # Crawl4AI — headless browser
     crawl_result = _fetch_crawl4ai(url)
-    if "error" not in crawl_result:
+    if _is_usable(crawl_result, quality_checker):
         return crawl_result
 
     # Crawl4AI 也失败了，用 httpx 短内容勉强兜底
@@ -252,33 +262,37 @@ def _fetch_fallback(url: str) -> dict:
             print("  [警告] Crawl4AI 不可用，使用 httpx 短内容")
             return {**extracted, "method": "httpx"}
 
-    return crawl_result  # error dict
+    if "error" in crawl_result:
+        return crawl_result
+    return make_error("所有抓取方式均未获得可用内容", "quality", retryable=False)
 
 
 # ── 统一入口 ──
 
-def _fetch(url: str) -> dict:
+def _fetch(url: str, quality_checker=None) -> dict:
     """Jina 优先 → 降级链。返回含 content 的 dict 或 error dict。"""
     # URL 重写
     url = _rewrite_url(url)
 
     result = _with_retry(_fetch_jina, url)
-    if "error" not in result:
+    if _is_usable(result, quality_checker):
         return result
-    print(f"  [降级] Jina: {result['error'][:60]}，降级抓取...")
 
-    return _fetch_fallback(url)
+    reason = result.get("error", "内容质量不足")[:60]
+    print(f"  [降级] Jina: {reason}，降级抓取...")
+
+    return _fetch_fallback(url, quality_checker)
 
 
 # ── 公开接口 ──
 
-def fetch_article(url: str) -> dict:
+def fetch_article(url: str, quality_checker=None) -> dict:
     """抓取文章全文，用于主流程 Analyze 阶段。
 
     返回 {title, content, author, date, description, word_count, was_truncated, method}
     或 error dict。
     """
-    result = _fetch(url)
+    result = _fetch(url, quality_checker)
     if "error" in result:
         return result
 
