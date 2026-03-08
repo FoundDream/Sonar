@@ -6,9 +6,9 @@
 
 import json
 
-from agent.prompts import PLAN_TOOL, PLANNER_PROMPT
 from llm.client import LLMClient
 from stages.models import AnalysisResult, ResearchPlan
+from stages.prompts.plan import PLAN_TOOL, PLANNER_PROMPT
 
 
 class PlanStage:

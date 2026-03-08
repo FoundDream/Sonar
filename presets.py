@@ -1,12 +1,8 @@
 """预设配置：beginner / research 模式。"""
 
-from agent.prompts import (
-    CLASSIFY_TOOL,
-    RESEARCH_RESEARCHER_PROMPT,
-    RESEARCHER_PROMPT,
-    SYNTHESIZER_PROMPT,
-)
 from stages.models import FieldSpec, ResearchPlan, SectionSpec
+from stages.prompts.research import RESEARCH_RESEARCHER_PROMPT, RESEARCHER_PROMPT
+from stages.prompts.synthesize import CLASSIFY_TOOL, SYNTHESIZER_PROMPT
 
 
 def _beginner_finding_schema() -> list[FieldSpec]:

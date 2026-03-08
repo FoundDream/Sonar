@@ -3,10 +3,10 @@
 import json
 from urllib.parse import urlparse
 
-from agent.prompts import CLASSIFY_TOOL, SYNTHESIZER_PROMPT
 from llm.client import LLMClient
 from report.schema import format_issues, has_errors, validate_report
 from stages.models import ReportData, ResearchPlan, ResearchResult
+from stages.prompts.synthesize import CLASSIFY_TOOL, SYNTHESIZER_PROMPT
 from tools.search import BLOCKED_DOMAINS
 
 

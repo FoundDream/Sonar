@@ -3,15 +3,12 @@
 import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from agent.prompts import (
-    CONCEPT_DONE_TOOL,
-    RESEARCHER_PROMPT,
-    VERIFIER_PROMPT,
-    VERIFY_TOOL,
-)
 from llm.client import LLMClient
 from report.schema import format_issues, validate_concept
 from stages.models import AnalysisResult, ResearchPlan, ResearchResult
+from stages.prompts.research import RESEARCHER_PROMPT
+from stages.prompts.schemas import CONCEPT_DONE_TOOL, build_finding_tool
+from stages.prompts.verify import VERIFIER_PROMPT, VERIFY_TOOL
 from tools.fetch import FETCH_RESOURCE_TOOL, fetch_resource
 from tools.search import SEARCH_TOOL, search
 
@@ -200,7 +197,6 @@ class ResearchStage:
         self.plan = plan
         self._finding_tool = None
         if plan and plan.finding_schema:
-            from agent.prompts import build_finding_tool
             self._finding_tool = build_finding_tool(plan.finding_schema)
 
     def run(self, analysis: AnalysisResult) -> ResearchResult:
