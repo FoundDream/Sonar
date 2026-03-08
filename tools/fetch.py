@@ -252,17 +252,21 @@ def _fetch_fallback(url: str, quality_checker=None) -> dict:
 
     # Crawl4AI — headless browser
     crawl_result = _fetch_crawl4ai(url)
-    if _is_usable(crawl_result, quality_checker):
+    crawl_fetched = "error" not in crawl_result
+    if crawl_fetched and _is_usable(crawl_result, quality_checker):
         return crawl_result
 
-    # Crawl4AI 也失败了，用 httpx 短内容勉强兜底
+    # 兜底：优先用 httpx 内容（已确认有文本）
     if httpx_ok:
         extracted = extract_content(resp.text, url)
         if extracted["content"].strip():
-            print("  [警告] Crawl4AI 不可用，使用 httpx 短内容")
+            if crawl_fetched:
+                print("  [警告] Crawl4AI 内容质检未通过，回退 httpx")
+            else:
+                print(f"  [警告] Crawl4AI 抓取失败，回退 httpx")
             return {**extracted, "method": "httpx"}
 
-    if "error" in crawl_result:
+    if not crawl_fetched:
         return crawl_result
     return make_error("所有抓取方式均未获得可用内容", "quality", retryable=False)
 
