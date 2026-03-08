@@ -101,6 +101,20 @@ SEARCH_BACKEND=duckduckgo
 uv sync --extra local-classifier
 ```
 
+## 架构
+
+```
+main.py (CLI)
+  → pipeline.py (编排)
+      → fetchers/          输入层：BaseFetcher 接口 + 路由
+      │   local_file.py      本地文件 (.pdf/.md/.txt/.html)
+      │   url.py             URL (Jina → Crawl4AI → httpx 降级链)
+      → stages/            处理层：Analyze → Plan → Research → Synthesize
+      → report/            输出层：HTML 渲染
+```
+
+扩展新输入类型（如 YouTube、GitHub 仓库）：在 `fetchers/` 下新建文件实现 `BaseFetcher`，注册到 `fetchers/__init__.py` 即可。
+
 ## 开发与贡献
 
 ```bash

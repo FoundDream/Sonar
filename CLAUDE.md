@@ -49,6 +49,11 @@ Fetch → Analyze → Plan → Research → Synthesize → render_report
 | ---------------------- | --------------------------------------------------------------------- |
 | `main.py`              | CLI 入口，定义 `--mode` 的合法值                                      |
 | `pipeline.py`          | 编排 stages，mode 直接作为 preset 名传入                              |
+| `fetchers/`            | 输入源抽象层：`BaseFetcher` ABC + 路由注册                           |
+| `fetchers/base.py`     | `BaseFetcher` 接口、`FetchError` 异常                                |
+| `fetchers/url.py`      | `URLFetcher` — 包装 `tools/fetch.fetch_article()`                    |
+| `fetchers/local_file.py` | `LocalFileFetcher` — 本地文件读取（pdf/md/txt/html）               |
+| `stages/fetch.py`      | `FetchStage` — 调 `get_fetcher().fetch()` + LLM 内容验证             |
 | `presets.py`           | `explain` / `academic` preset 的 schema、sections 和 prompt 覆盖配置 |
 | `stages/prompts/`      | 按 stage 拆分的默认 prompt 和 tool schema                             |
 | `stages/models.py`     | 各阶段输入输出的数据模型                                              |
@@ -57,6 +62,11 @@ Fetch → Analyze → Plan → Research → Synthesize → render_report
 | `report/`              | HTML 渲染                                                             |
 
 ## 修改 checklist
+
+### 新增输入源类型
+
+1. `fetchers/` 下新建 `xxx.py`，实现 `BaseFetcher`（`can_handle` + `fetch`）
+2. `fetchers/__init__.py` — 在 `FETCHERS` 列表中注册
 
 ### 新增 mode
 
