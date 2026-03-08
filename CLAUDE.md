@@ -53,7 +53,9 @@ Fetch → Analyze → Plan → Research → Synthesize → render_report
 | `fetchers/base.py`     | `BaseFetcher` 接口、`FetchError` 异常                                |
 | `fetchers/url.py`      | `URLFetcher` — 包装 `tools/fetch.fetch_article()`                    |
 | `fetchers/local_file.py` | `LocalFileFetcher` — 本地文件读取（pdf/md/txt/html）               |
-| `stages/fetch.py`      | `FetchStage` — 调 `get_fetcher().fetch()` + LLM 内容验证             |
+| `stages/fetch.py`      | `FetchStage` — 调 `get_fetcher().fetch()`，注入质量检查器            |
+| `tools/quality.py`     | `make_quality_checker()` — 小模型优先、LLM 兜底的内容质量判断       |
+| `tools/classify.py`    | DeBERTa 小模型内容分类（可选依赖 `local-classifier`）               |
 | `presets.py`           | `explain` / `academic` preset 的 schema、sections 和 prompt 覆盖配置 |
 | `stages/prompts/`      | 按 stage 拆分的默认 prompt 和 tool schema                             |
 | `stages/models.py`     | 各阶段输入输出的数据模型                                              |
