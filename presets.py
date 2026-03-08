@@ -1,11 +1,11 @@
-"""预设配置：beginner / research 模式。"""
+"""预设配置：explain / academic 模式。"""
 
 from stages.models import FieldSpec, ResearchPlan, SectionSpec
 from stages.prompts.research import RESEARCH_RESEARCHER_PROMPT, RESEARCHER_PROMPT
 from stages.prompts.synthesize import CLASSIFY_TOOL, SYNTHESIZER_PROMPT
 
 
-def _beginner_finding_schema() -> list[FieldSpec]:
+def _explain_finding_schema() -> list[FieldSpec]:
     return [
         FieldSpec("name", "string", "概念名称", required=True),
         FieldSpec("explanation", "string", "概念的通俗解释，不限字数，写清楚为止", required=True, min_length=50),
@@ -17,7 +17,7 @@ def _beginner_finding_schema() -> list[FieldSpec]:
     ]
 
 
-def _beginner_sections() -> list[SectionSpec]:
+def _explain_sections() -> list[SectionSpec]:
     return [
         SectionSpec("overview", "速览"),
         SectionSpec("summary", "摘要"),
@@ -29,17 +29,17 @@ def _beginner_sections() -> list[SectionSpec]:
     ]
 
 
-BEGINNER_PRESET = ResearchPlan(
-    preset="beginner",
-    finding_schema=_beginner_finding_schema(),
-    sections=_beginner_sections(),
+EXPLAIN_PRESET = ResearchPlan(
+    preset="explain",
+    finding_schema=_explain_finding_schema(),
+    sections=_explain_sections(),
     researcher_prompt=RESEARCHER_PROMPT,
     synthesizer_prompt=SYNTHESIZER_PROMPT,
     classify_tool=CLASSIFY_TOOL,
 )
 
 
-def _research_finding_schema() -> list[FieldSpec]:
+def _academic_finding_schema() -> list[FieldSpec]:
     return [
         FieldSpec("name", "string", "概念/论文名称", required=True),
         FieldSpec("summary", "string", "核心内容概述", required=True, min_length=80),
@@ -50,7 +50,7 @@ def _research_finding_schema() -> list[FieldSpec]:
     ]
 
 
-def _research_sections() -> list[SectionSpec]:
+def _academic_sections() -> list[SectionSpec]:
     return [
         SectionSpec("overview", "速览"),
         SectionSpec("summary", "摘要"),
@@ -86,18 +86,18 @@ RESEARCH_SYNTHESIZER_PROMPT = """\
 """
 
 
-RESEARCH_PRESET = ResearchPlan(
-    preset="research",
-    finding_schema=_research_finding_schema(),
-    sections=_research_sections(),
+ACADEMIC_PRESET = ResearchPlan(
+    preset="academic",
+    finding_schema=_academic_finding_schema(),
+    sections=_academic_sections(),
     researcher_prompt=RESEARCH_RESEARCHER_PROMPT,
     synthesizer_prompt=RESEARCH_SYNTHESIZER_PROMPT,
     classify_tool=CLASSIFY_TOOL,
 )
 
 _PRESETS = {
-    "beginner": BEGINNER_PRESET,
-    "research": RESEARCH_PRESET,
+    "explain": EXPLAIN_PRESET,
+    "academic": ACADEMIC_PRESET,
 }
 
 

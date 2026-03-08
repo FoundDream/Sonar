@@ -84,7 +84,7 @@ class AnalysisResult:
 @dataclass
 class ResearchPlan:
     """Plan 阶段输出：控制后续研究和报告行为。"""
-    preset: str = "beginner"
+    preset: str = "explain"
     goal: str = ""
     finding_schema: list[FieldSpec] = field(default_factory=list)
     sections: list[SectionSpec] = field(default_factory=list)
@@ -120,7 +120,7 @@ class ResearchPlan:
     @classmethod
     def from_dict(cls, data: dict) -> ResearchPlan:
         plan = cls(
-            preset=data.get("preset", "beginner"),
+            preset=data.get("preset", "explain"),
             goal=data.get("goal", ""),
             researcher_prompt=data.get("researcher_prompt", ""),
             synthesizer_prompt=data.get("synthesizer_prompt", ""),

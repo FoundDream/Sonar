@@ -159,7 +159,7 @@ class SynthesizeStage:
 
         # Build paper_list for research mode
         paper_list = []
-        if self.plan and self.plan.preset == "research":
+        if self.plan and self.plan.preset == "academic":
             paper_list = self._build_paper_list(concepts, _filter_resources)
 
         # Build sections list for modular template rendering

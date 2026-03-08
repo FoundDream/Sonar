@@ -3,6 +3,7 @@
 ## 规则
 
 每次修改代码后，如果涉及架构、模式、CLI 接口、文件职责的变动，必须同步更新：
+
 - `CLAUDE.md`（架构和 checklist）
 - `README.md`（用法说明）
 
@@ -32,46 +33,45 @@ Fetch → Analyze → Plan → Research → Synthesize → render_report
 
 每个阶段的输出保存在 `output/runs/<run_id>/<stage>.json`，支持 `--resume-from <stage>` 断点恢复。
 
-### 模式与 preset 的映射关系
+### 三种模式
 
-CLI `--mode` 是用户接口，内部 `preset` 是实现细节：
+| `--mode`   | 适用场景             | 流程                          |
+| ---------- | -------------------- | ----------------------------- |
+| `reading`  | 快速摘要，无概念研究 | Fetch → Analyze → 渲染       |
+| `explain`  | 技术博客/教程        | 完整 pipeline（默认）         |
+| `academic` | 学术论文             | 完整 pipeline，学术侧 preset |
 
-| CLI `--mode` | 内部 preset  | 适用场景            |
-|--------------|-------------|---------------------|
-| `reading`    | —（不用）    | 快速摘要，无概念研究 |
-| `explain`    | `beginner`  | 技术博客/教程        |
-| `academic`   | `research`  | 学术论文             |
-
-映射在 `pipeline.py` 的 `_MODE_TO_PRESET` 中维护。
+`explain` / `academic` 各有对应的 preset 配置（`presets.py`），mode 名 = preset 名，无额外映射。
 
 ### 关键文件
 
-| 文件 | 职责 |
-|------|------|
-| `main.py` | CLI 入口，定义 `--mode` 的合法值 |
-| `pipeline.py` | 编排 stages，`_MODE_TO_PRESET` 维护模式映射 |
-| `presets.py` | `beginner` / `research` preset 的 schema 和 prompt 配置 |
-| `agent/prompts.py` | 所有 LLM prompt 和 tool schema |
-| `stages/models.py` | 各阶段输入输出的数据模型 |
-| `stages/research.py` | 并行概念研究 + Verifier 质量审查 |
-| `stages/synthesize.py` | 概念分类、组装报告数据 |
-| `report/` | HTML 渲染 |
+| 文件                   | 职责                                                                  |
+| ---------------------- | --------------------------------------------------------------------- |
+| `main.py`              | CLI 入口，定义 `--mode` 的合法值                                      |
+| `pipeline.py`          | 编排 stages，mode 直接作为 preset 名传入                              |
+| `presets.py`           | `explain` / `academic` preset 的 schema、sections 和 prompt 覆盖配置 |
+| `stages/prompts/`      | 按 stage 拆分的默认 prompt 和 tool schema                             |
+| `stages/models.py`     | 各阶段输入输出的数据模型                                              |
+| `stages/research.py`   | 并行概念研究 + Verifier 质量审查                                      |
+| `stages/synthesize.py` | 概念分类、组装报告数据                                                |
+| `report/`              | HTML 渲染                                                             |
 
 ## 修改 checklist
 
 ### 新增 mode
 
 1. `main.py` — 在 `--mode` 的 `choices` 里加新值
-2. `pipeline.py` — 在 `_MODE_TO_PRESET` 里加映射
-3. `presets.py` — 如需新 preset，添加对应配置
+2. `presets.py` — 添加同名 preset 配置
 4. `README.md` — 更新报告模式表格和 CLI 用法
 
 ### 修改 prompt / schema
 
-- Researcher prompt → `agent/prompts.py` 或 `presets.py`（research 模式）
-- Synthesizer prompt → `presets.py`（research 模式）/ `agent/prompts.py`（beginner 模式）
+- Plan prompt / tool → `stages/prompts/plan.py`
+- Researcher prompt → `stages/prompts/research.py`；如需按 preset 覆盖，再改 `presets.py`
+- Verifier prompt / tool → `stages/prompts/verify.py`
+- Synthesizer prompt / classify tool → `stages/prompts/synthesize.py`；如需按 preset 覆盖，再改 `presets.py`
 - Finding schema → `presets.py` 的 `_*_finding_schema()` 函数
-- `concept_done` tool 由 `build_finding_tool(plan.finding_schema)` 动态生成
+- `concept_done` tool 由 `stages/prompts/schemas.py` 中的 `build_finding_tool(plan.finding_schema)` 动态生成
 
 ## 输出目录结构
 

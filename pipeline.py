@@ -23,7 +23,6 @@ from stages.research import ResearchStage
 from stages.synthesize import SynthesizeStage
 
 OUTPUT_DIR = "output"
-_MODE_TO_PRESET = {"explain": "beginner", "academic": "research"}
 RUNS_DIR = os.path.join(OUTPUT_DIR, "runs")
 LATEST_RUN_FILE = os.path.join(OUTPUT_DIR, "latest_run.txt")
 LEGACY_RUN_ID = "__legacy__"
@@ -34,7 +33,7 @@ class Pipeline:
     def __init__(self, llm: LLMClient, mode: str = "explain", goal: str = ""):
         self.llm = llm
         self.mode = mode
-        self.preset = _MODE_TO_PRESET.get(mode, "beginner")
+        self.preset = mode  # reading 模式不会用到 preset
         self.goal = goal
         self.run_id: str | None = None
         self.run_dir: str = OUTPUT_DIR
