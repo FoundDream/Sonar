@@ -47,7 +47,7 @@ class Pipeline:
         self._init_run_storage(resume_from=resume_from, run_id=run_id)
         if self.mode == "reading":
             return self._run_reading(source, resume_from)
-        return self._run_fixed(source, resume_from)  # explain / academic
+        return self._run_fixed(source, resume_from)
 
     def _run_reading(self, source: str, resume_from: str | None = None) -> str:
         """Reading mode: Fetch -> Analyze -> Render. No concept research."""

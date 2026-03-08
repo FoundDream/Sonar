@@ -1,6 +1,6 @@
 ## Sonar
 
-输入文章 URL 或本地文件，自动分析内容并生成结构化报告。支持三种模式：快速阅读报告、概念解读和论文探索。
+输入文章 URL 或本地文件，自动生成结构化学习报告。适用于任何类型的文章（技术博客、学术论文、教程等）。
 
 ## Quickstart
 
@@ -22,23 +22,19 @@ uv run main.py ./paper.pdf
 
 | 模式                       | 说明                                   | 流程                                           | 成本             |
 | -------------------------- | -------------------------------------- | ---------------------------------------------- | ---------------- |
-| `--mode reading`           | 阅读报告：摘要、核心论点、关键洞见     | Fetch → Analyze → 渲染                         | 2 次 LLM，无搜索 |
-| `--mode explain`（默认）   | 概念解读：概念解释、学习资料、学习路径 | Fetch → Analyze → Plan → Research → Synthesize | 多次 LLM + 搜索  |
-| `--mode academic`          | 论文探索：研究方法、关键发现、相关论文 | Fetch → Analyze → Plan → Research → Synthesize | 多次 LLM + 搜索  |
+| `--mode reading`           | 快速摘要：核心论点、关键洞见           | Fetch → Analyze → 渲染                         | 2 次 LLM，无搜索 |
+| `--mode explain`（默认）   | 完整学习报告：概念解释、学习路径、延伸阅读 | Fetch → Analyze → Plan → Research → Synthesize | 多次 LLM + 搜索  |
 
 ## CLI 用法
 
 输入可以是 URL 或本地文件路径：
 
 ```bash
-# 阅读报告（摘要 + 观点拆解）
-uv run main.py <URL或文件> --mode reading
-
-# 概念解读（默认，适合技术博客/教程）
+# 完整学习报告（默认，适合任何类型的文章）
 uv run main.py <URL或文件>
 
-# 论文探索（适合学术论文，关注方法论和相关工作）
-uv run main.py <URL或文件> --mode academic
+# 快速摘要（摘要 + 观点拆解，不做概念研究）
+uv run main.py <URL或文件> --mode reading
 ```
 
 额外选项：

@@ -29,19 +29,18 @@ Fetch → Analyze → Plan → Research → Synthesize → render_report
 ```
 
 - `reading` 模式跳过 Plan / Research / Synthesize，直接 Fetch → Analyze → 渲染
-- `explain` / `academic` 模式走完整流程
+- `explain`（默认）走完整流程，适用于任何类型的文章（博客、论文、教程等）
 
 每个阶段的输出保存在 `output/runs/<run_id>/<stage>.json`，支持 `--resume-from <stage>` 断点恢复。
 
-### 三种模式
+### 两种模式
 
 | `--mode`   | 适用场景             | 流程                          |
 | ---------- | -------------------- | ----------------------------- |
 | `reading`  | 快速摘要，无概念研究 | Fetch → Analyze → 渲染       |
-| `explain`  | 技术博客/教程        | 完整 pipeline（默认）         |
-| `academic` | 学术论文             | 完整 pipeline，学术侧 preset |
+| `explain`  | 完整学习报告（默认） | 完整 pipeline                 |
 
-`explain` / `academic` 各有对应的 preset 配置（`presets.py`），mode 名 = preset 名，无额外映射。
+统一的 preset 配置在 `presets.py`，finding schema 包含核心字段（explanation, why_important, example 等）和可选扩展字段（methodology, key_findings），研究员按内容类型自适应填写。
 
 ### 关键文件
 
@@ -56,7 +55,7 @@ Fetch → Analyze → Plan → Research → Synthesize → render_report
 | `stages/fetch.py`      | `FetchStage` — 调 `get_fetcher().fetch()`，注入质量检查器            |
 | `tools/quality.py`     | `make_quality_checker()` — 小模型优先、LLM 兜底的内容质量判断       |
 | `tools/classify.py`    | DeBERTa 小模型内容分类（可选依赖 `local-classifier`）               |
-| `presets.py`           | `explain` / `academic` preset 的 schema、sections 和 prompt 覆盖配置 |
+| `presets.py`           | 统一 preset 配置：finding schema、sections、prompt                   |
 | `stages/prompts/`      | 按 stage 拆分的默认 prompt 和 tool schema                             |
 | `stages/models.py`     | 各阶段输入输出的数据模型                                              |
 | `stages/research.py`   | 并行概念研究 + Verifier 质量审查                                      |
@@ -70,19 +69,13 @@ Fetch → Analyze → Plan → Research → Synthesize → render_report
 1. `fetchers/` 下新建 `xxx.py`，实现 `BaseFetcher`（`can_handle` + `fetch`）
 2. `fetchers/__init__.py` — 在 `FETCHERS` 列表中注册
 
-### 新增 mode
-
-1. `main.py` — 在 `--mode` 的 `choices` 里加新值
-2. `presets.py` — 添加同名 preset 配置
-4. `README.md` — 更新报告模式表格和 CLI 用法
-
 ### 修改 prompt / schema
 
 - Plan prompt / tool → `stages/prompts/plan.py`
-- Researcher prompt → `stages/prompts/research.py`；如需按 preset 覆盖，再改 `presets.py`
+- Researcher prompt → `stages/prompts/research.py`
 - Verifier prompt / tool → `stages/prompts/verify.py`
-- Synthesizer prompt / classify tool → `stages/prompts/synthesize.py`；如需按 preset 覆盖，再改 `presets.py`
-- Finding schema → `presets.py` 的 `_*_finding_schema()` 函数
+- Synthesizer prompt / classify tool → `stages/prompts/synthesize.py`
+- Finding schema → `presets.py` 的 `_finding_schema()` 函数
 - `concept_done` tool 由 `stages/prompts/schemas.py` 中的 `build_finding_tool(plan.finding_schema)` 动态生成
 
 ## 输出目录结构

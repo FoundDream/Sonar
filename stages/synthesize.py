@@ -164,10 +164,8 @@ class SynthesizeStage:
             overview["recommendation"] = "skim_first"
             print("[修正] overview.recommendation: deep_read → skim_first（存在前置知识）")
 
-        # Build paper_list for research mode
-        paper_list = []
-        if self.plan and self.plan.preset == "academic":
-            paper_list = self._build_paper_list(prerequisites, concepts)
+        # Build deduplicated reading list from all resources
+        paper_list = self._build_paper_list(prerequisites, concepts)
 
         # Build sections list for modular template rendering
         sections = self._build_sections(overview, research, prerequisites, concepts, learning_path, paper_list)
