@@ -36,6 +36,7 @@ class FetchResult:
     description: str = ""
     word_count: int = 0
     was_truncated: bool = False
+    method: str = ""
     source_type: str = "url"  # "url" | "file"
 
     def to_dict(self) -> dict:
@@ -48,6 +49,7 @@ class FetchResult:
             "description": self.description,
             "word_count": self.word_count,
             "was_truncated": self.was_truncated,
+            "method": self.method,
             "source_type": self.source_type,
         }
 

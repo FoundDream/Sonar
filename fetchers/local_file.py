@@ -108,7 +108,9 @@ class LocalFileFetcher(BaseFetcher):
             description=description,
             word_count=raw_len,
             was_truncated=len(truncated) < raw_len,
+            method="local_file",
             source_type="file",
         )
         print(f"[读取] 标题: {result.title} ({raw_len} 字)")
+        print(f"[读取] 方法: {result.method}")
         return result

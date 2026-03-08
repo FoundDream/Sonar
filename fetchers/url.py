@@ -29,7 +29,10 @@ class URLFetcher(BaseFetcher):
             description=result.get("description", ""),
             word_count=result.get("word_count", 0),
             was_truncated=result.get("was_truncated", False),
+            method=result.get("method", ""),
             source_type="url",
         )
         print(f"[抓取] 标题: {fetch_result.title}")
+        if fetch_result.method:
+            print(f"[抓取] 方法: {fetch_result.method}")
         return fetch_result

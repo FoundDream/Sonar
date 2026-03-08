@@ -82,3 +82,16 @@ def test_build_reading_report() -> None:
     assert section_types == ["overview", "summary", "analysis"]
 
 
+def test_fetch_result_to_dict_includes_method() -> None:
+    result = FetchResult(
+        url="https://example.com/article",
+        title="Test Article",
+        content="content",
+        method="crawl4ai",
+        source_type="url",
+    )
+
+    data = result.to_dict()
+
+    assert data["method"] == "crawl4ai"
+
