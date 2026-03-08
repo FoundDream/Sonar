@@ -2,9 +2,8 @@
 
 import json
 
-from llm.client import LLMClient
-
 from models import AnalysisResult, ResearchPlan
+from tools.llm import LLMClient
 
 # ── Prompt ────────────────────────────────────────────────────────
 

@@ -1,11 +1,10 @@
 """研究员 Agent：搜索资料并研究单个概念。"""
 
-from llm.client import LLMClient
-
 from agents.base import Agent
 from models import FieldSpec
 from report.schema import format_issues, validate_concept, validate_finding
 from tools.fetch import FETCH_RESOURCE_TOOL, fetch_resource
+from tools.llm import LLMClient
 from tools.search import SEARCH_TOOL, search
 
 # ── Prompt ────────────────────────────────────────────────────────

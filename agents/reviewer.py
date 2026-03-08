@@ -1,9 +1,8 @@
 """报告审查员 Agent：LLM-powered 报告级质量审查。"""
 
-from llm.client import LLMClient
-
 from agents.base import Agent
 from models import ResearchResult, ReviewResult, ReworkItem
+from tools.llm import LLMClient
 
 # ── Prompt ────────────────────────────────────────────────────────
 

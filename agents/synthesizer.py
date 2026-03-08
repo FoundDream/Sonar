@@ -3,10 +3,9 @@
 import json
 from urllib.parse import urlparse
 
-from llm.client import LLMClient
-
 from models import ReportData, ResearchPlan, ResearchResult
 from report.schema import format_issues, has_errors, validate_report
+from tools.llm import LLMClient
 from tools.search import BLOCKED_DOMAINS
 
 # ── Prompt ────────────────────────────────────────────────────────

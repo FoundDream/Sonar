@@ -1,9 +1,8 @@
 """审查员 Agent：审查单个概念的研究质量。"""
 
-from llm.client import LLMClient
-
 from agents.base import Agent
 from models import FieldSpec
+from tools.llm import LLMClient
 
 # ── Prompt ────────────────────────────────────────────────────────
 

@@ -7,8 +7,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from uuid import uuid4
 
-from llm.client import LLMClient
-
 from agents.analyzer import Analyzer
 from agents.planner import Planner
 from agents.researcher import EMPTY_FINDING, Researcher, build_finding_tool
@@ -28,6 +26,7 @@ from models import (
     save_stage_output,
 )
 from report.renderer import render_report
+from tools.llm import LLMClient
 from tools.quality import make_quality_checker
 
 OUTPUT_DIR = "output"
