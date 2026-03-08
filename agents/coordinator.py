@@ -11,6 +11,7 @@ from agents.analyzer import Analyzer
 from agents.base import Agent
 from agents.researcher import EMPTY_FINDING, Researcher, build_finding_tool
 from agents.reviewer import Reviewer
+from agents.scout import Scout
 from agents.synthesizer import Synthesizer
 from agents.verifier import Verifier
 from fetchers import get_fetcher
@@ -43,25 +44,57 @@ MAX_VERIFY_RETRIES = 1
 # ── Coordinator Prompt ───────────────────────────────────────────
 
 COORDINATOR_PROMPT = """\
-你是 Sonar 的协调器（Coordinator）。你负责协调多个专家 Agent 来为用户生成一份高质量的学习报告。
+你是 Sonar 的协调器。你根据文章内容和用户需求自主决策，而不是按固定顺序执行。
 
-## 你的职责
+## 可用工具
 
-你根据当前状态自主决定下一步操作。你的工作流程是：
+- analyze_article — 抓取并分析文章（URL 或单个文件）
+- explore_project — 探索项目目录，生成项目地图（目录输入时使用）
+- research_concepts — 并行研究你选定的概念
+- review_research — 审查研究质量
+- rework_concepts — 返工不合格的概念
+- synthesize_report — 合成最终报告
+- generate_reading_report — 跳过研究，直接生成阅读报告
+- finalize_report — 完成流程（终止）
 
-1. **analyze_article** — 抓取并分析文章，获取摘要、速览、核心概念
-2. **research_concepts** — 并行研究所有核心概念（每个概念由独立的研究员 Agent 完成）
-3. **review_research** — 审查研究质量
-4. （可选）**rework_concepts** — 如果审查发现质量问题，返工特定概念
-5. **synthesize_report** — 合成最终报告
-6. **finalize_report** — 标记完成
+## 判断 0：使用哪个入口？
 
-## 决策原则
+- 来源是 URL 或单个文件 → analyze_article
+- 来源是项目目录 → explore_project（Scout Agent 会自主探索项目结构和代码）
 
-- 按顺序执行，每一步完成后根据结果决定下一步
-- review 后如果有返工项，调用 rework_concepts；如果全部通过，直接 synthesize
-- 最多返工一次，避免死循环
-- 完成所有步骤后，必须调用 finalize_report 结束流程
+## 判断 1：分析后 — 需要概念研究吗？
+
+analyze_article 或 explore_project 返回分析结果。你需要判断：
+- 文章/项目是否通俗到分析结果已经足够？（科普文、新闻评论通常不需要研究）
+- 概念对目标读者来说是否属于常识？
+→ 不需要研究：generate_reading_report
+→ 需要研究：进入判断 2
+
+## 判断 2：研究哪些概念？怎么研究？
+
+这是你最重要的决策。不要无脑全选，要根据分析结果判断：
+
+**选择概念**：
+- 哪些概念对理解文章核心论点（main_thesis）最关键？
+- 有用户目标时，哪些与目标最相关？不相关的要排除
+- 目标读者（target_audience）已经熟悉的概念不需要研究
+- 纯背景性的、不影响理解核心论点的概念可以跳过
+
+**提供 concept_hints**：为每个选中概念写一句话，告诉研究员：
+- 这个概念在文章中扮演什么角色（来自 key_insights）
+- 应该从什么角度研究
+好的 hints 能显著提升研究质量。
+
+## 判断 3：审查后 — 怎么处理？
+
+review_research 返回每个概念的审查反馈。根据问题严重程度判断：
+- 解释空白、完全跑题 → rework_concepts（值得返工）
+- 措辞欠佳、资料偏少但内容正确 → 直接 synthesize_report（可接受）
+- 已返工过 → 不再返工
+
+## 完成
+
+synthesize_report 或 generate_reading_report 后，调用 finalize_report。
 """
 
 # ── Tool Schemas ─────────────────────────────────────────────────
@@ -80,6 +113,24 @@ ANALYZE_TOOL = {
                 },
             },
             "required": ["source"],
+        },
+    },
+}
+
+EXPLORE_PROJECT_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "explore_project",
+        "description": "探索项目目录：Scout Agent 自主探索项目结构、读取关键文件，生成项目地图。用于目录输入。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "项目目录路径",
+                },
+            },
+            "required": ["path"],
         },
     },
 }
@@ -162,6 +213,24 @@ SYNTHESIZE_TOOL = {
     },
 }
 
+READING_REPORT_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "generate_reading_report",
+        "description": "生成快速阅读报告，跳过概念研究。适用于简单文章或分析结果已足够完整的情况。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "reasoning": {
+                    "type": "string",
+                    "description": "说明为什么选择跳过研究",
+                },
+            },
+            "required": ["reasoning"],
+        },
+    },
+}
+
 FINALIZE_TOOL = {
     "type": "function",
     "function": {
@@ -216,10 +285,12 @@ class Coordinator(Agent):
 
         # Register tools
         self.add_tool(ANALYZE_TOOL, handler=self._handle_analyze)
+        self.add_tool(EXPLORE_PROJECT_TOOL, handler=self._handle_explore)
         self.add_tool(RESEARCH_TOOL, handler=self._handle_research)
         self.add_tool(REVIEW_TOOL, handler=self._handle_review)
         self.add_tool(REWORK_TOOL, handler=self._handle_rework)
         self.add_tool(SYNTHESIZE_TOOL, handler=self._handle_synthesize)
+        self.add_tool(READING_REPORT_TOOL, handler=self._handle_reading_report)
         self.add_terminal_tool(FINALIZE_TOOL)
 
     # ── Public API ───────────────────────────────────────────────
@@ -312,22 +383,22 @@ class Coordinator(Agent):
         return output_path
 
     def _build_task(self, source: str, resume_from: str | None) -> str:
-        parts = [f"请为以下来源生成完整的学习报告。\n\n来源: {source}"]
+        parts = [f"来源: {source}"]
+
+        if os.path.isdir(source):
+            parts.append("（这是一个项目目录）")
 
         if self.goal:
             parts.append(f"\n用户学习目标: {self.goal}")
 
         if resume_from:
-            parts.append(f"\n注意：从 {resume_from} 阶段恢复执行。之前的阶段数据已加载。")
+            parts.append(f"\n从 {resume_from} 阶段恢复，之前阶段数据已加载。")
             if resume_from in ("research", "plan"):
                 analysis = self._state.get("analysis")
                 if analysis:
-                    parts.append(f"已有分析结果，包含 {len(analysis.concepts)} 个概念: {', '.join(analysis.concepts)}")
-                    parts.append("请直接调用 research_concepts 开始研究。")
+                    parts.append(f"已有分析: {len(analysis.concepts)} 个概念 — {', '.join(analysis.concepts)}")
             elif resume_from == "synthesize":
-                parts.append("研究数据已加载，请直接调用 synthesize_report。")
-        else:
-            parts.append("\n请从 analyze_article 开始。")
+                parts.append("研究数据已加载。")
 
         return "\n".join(parts)
 
@@ -379,13 +450,87 @@ class Coordinator(Agent):
         self._state["plan"] = plan
         save_stage_output(plan.to_dict(), self._stage_path("plan"))
 
-        return {
+        article_analysis = analysis.article_analysis or {}
+        result = {
             "title": analysis.article_title,
-            "summary": analysis.article_summary[:200],
+            "summary": analysis.article_summary,
+            "main_thesis": article_analysis.get("main_thesis", ""),
+            "key_insights": [
+                i.get("title", "") for i in article_analysis.get("key_insights", [])
+            ],
             "concepts": analysis.concepts,
             "concept_count": len(analysis.concepts),
             "difficulty": analysis.overview.get("difficulty", "unknown"),
+            "recommendation": analysis.overview.get("recommendation", "unknown"),
+            "target_audience": analysis.overview.get("target_audience", ""),
         }
+        if self.goal:
+            result["user_goal"] = self.goal
+        return result
+
+    def _handle_explore(self, path: str) -> dict:
+        # Fetch directory content
+        fetch_result = self._fetch(path)
+        if isinstance(fetch_result, dict) and "error" in fetch_result:
+            return fetch_result
+        self._state["fetch_result"] = fetch_result
+        save_stage_output(fetch_result.to_dict(), self._stage_path("fetch"))
+
+        # Scout explores the project
+        print("\n--- Scout 探索项目 ---")
+        scout = Scout(self.llm)
+        project_map = scout.explore(path, goal=self.goal)
+        save_stage_output(project_map, self._stage_path("scout"))
+        print(f"[Scout] 完成: {len(project_map.get('concepts', []))} 个概念, "
+              f"{len(project_map.get('key_files', []))} 个关键文件")
+
+        # Convert to AnalysisResult for downstream compatibility
+        key_files = project_map.get("key_files", [])
+        analysis = AnalysisResult(
+            url=path,
+            article_title=project_map.get("project_name", os.path.basename(path)),
+            article_summary=project_map.get("description", ""),
+            overview={
+                "topic": project_map.get("description", "")[:30],
+                "target_audience": "开发者",
+                "difficulty": "intermediate",
+                "recommendation": "deep_read",
+            },
+            article_analysis={
+                "main_thesis": project_map.get("description", ""),
+                "key_insights": [
+                    {
+                        "title": f.get("role", ""),
+                        "detail": f.get("path", ""),
+                        "why_it_matters": "",
+                    }
+                    for f in key_files[:4]
+                ],
+                "supporting_points": [],
+                "author_takeaway": project_map.get("architecture", ""),
+            },
+            concepts=project_map.get("concepts", []),
+        )
+        self._state["analysis"] = analysis
+        save_stage_output(analysis.to_dict(), self._stage_path("analyze"))
+
+        # Build plan
+        plan = self._build_plan(analysis)
+        self._state["plan"] = plan
+        save_stage_output(plan.to_dict(), self._stage_path("plan"))
+
+        result = {
+            "project_name": project_map.get("project_name", ""),
+            "description": project_map.get("description", ""),
+            "architecture": project_map.get("architecture", "")[:200],
+            "concepts": project_map.get("concepts", []),
+            "concept_count": len(project_map.get("concepts", [])),
+            "key_files": len(key_files),
+            "entry_points": project_map.get("entry_points", []),
+        }
+        if self.goal:
+            result["user_goal"] = self.goal
+        return result
 
     def _handle_research(self, concepts: list[str], reasoning: str, concept_hints: dict | None = None) -> dict:
         analysis = self._state.get("analysis")
@@ -439,18 +584,16 @@ class Coordinator(Agent):
 
         reviewer = Reviewer(self.llm)
         review = reviewer.review(research)
+        self._review_cycle += 1
 
-        if not review.passed and self._review_cycle < MAX_REVIEW_CYCLES:
-            self._review_cycle += 1
-            return {
-                "passed": False,
-                "rework_items": [
-                    {"concept": r.concept, "feedback": r.feedback}
-                    for r in review.rework
-                ],
-            }
-
-        return {"passed": True, "rework_items": []}
+        return {
+            "passed": review.passed,
+            "review_cycle": self._review_cycle,
+            "rework_items": [
+                {"concept": r.concept, "feedback": r.feedback}
+                for r in review.rework
+            ] if not review.passed else [],
+        }
 
     def _handle_rework(self, rework_items: list[dict]) -> dict:
         research = self._state.get("research_result")
@@ -511,6 +654,22 @@ class Coordinator(Agent):
             "prerequisites": len(report_data.prerequisites),
             "concepts": len(report_data.concepts),
             "learning_path_steps": len(report_data.learning_path),
+        }
+
+    def _handle_reading_report(self, reasoning: str) -> dict:
+        analysis = self._state.get("analysis")
+        if not analysis:
+            return {"error": "请先调用 analyze_article"}
+
+        print(f"[Coordinator] 生成阅读报告: {reasoning}")
+        report_data = self._build_reading_report(analysis)
+        self._state["report_data"] = report_data
+        save_stage_output(report_data.to_dict(), self._stage_path("synthesize"))
+
+        return {
+            "title": report_data.title,
+            "sections": [s["type"] for s in report_data.sections],
+            "note": "已生成阅读报告，请调用 finalize_report 完成",
         }
 
     # ── Agent hooks ──────────────────────────────────────────────

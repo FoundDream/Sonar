@@ -15,7 +15,7 @@ def main():
     parser = argparse.ArgumentParser(
         description="Sonar - 帮你读懂任何文章的学习助手",
     )
-    parser.add_argument("source", nargs="?", help="文章 URL 或本地文件路径（.pdf / .md / .txt / .html）")
+    parser.add_argument("source", nargs="?", help="文章 URL、本地文件路径（.pdf/.md/.txt/.html）或项目目录")
     parser.add_argument("--mode", default="explain", choices=["reading", "explain"],
                         help="报告模式: reading=快速摘要, explain=完整学习报告 (default: explain)")
     parser.add_argument("--goal", default="", help="自定义学习目标")

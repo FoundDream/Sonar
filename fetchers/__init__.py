@@ -3,12 +3,14 @@
 import os
 
 from fetchers.base import BaseFetcher, FetchError
+from fetchers.directory import DirectoryFetcher
 from fetchers.local_file import LocalFileFetcher
 from fetchers.url import URLFetcher
 from models import FetchResult
 
 FETCHERS: list[BaseFetcher] = [
-    LocalFileFetcher(),  # 先检查本地文件（更具体）
+    DirectoryFetcher(),  # 先检查目录（最具体）
+    LocalFileFetcher(),  # 再检查本地文件
     URLFetcher(),        # URL 作为 fallback
 ]
 
