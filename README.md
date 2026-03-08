@@ -95,7 +95,7 @@ SEARCH_BACKEND=duckduckgo
 
 ## 可选依赖
 
-本地内容质量分类器依赖较重（`torch`/`transformers`），默认不安装：
+本地内容质量分类器依赖较重（`torch`/`transformers`），默认不安装。只执行 `uv sync` 也可以正常运行，程序会自动降级到 LLM 质量检查；如果想启用本地分类器，再额外安装：
 
 ```bash
 uv sync --extra local-classifier

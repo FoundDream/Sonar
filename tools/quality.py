@@ -1,6 +1,7 @@
 """内容质量检查：统一入口，小模型优先、LLM 兜底。"""
 
 import json
+from collections.abc import Callable
 
 _MIN_CONTENT_LEN = 100
 
@@ -67,8 +68,8 @@ def make_quality_checker(llm=None):
 
     返回 Callable[[str], bool]。
     """
-    # 尝试加载小模型
-    local_check = None
+    # 尝试加载小模型入口；实际依赖可能在调用时才缺失。
+    local_check: Callable[[str], dict] | None = None
     try:
         from tools.classify import check_content_quality
         local_check = check_content_quality
@@ -76,15 +77,25 @@ def make_quality_checker(llm=None):
         pass
 
     def checker(content: str) -> bool:
+        nonlocal local_check
+
         if len(content.strip()) < _MIN_CONTENT_LEN:
             print(f"  [质量] 内容过短({len(content.strip())}字)")
             return False
 
         if local_check:
-            result = local_check(content)
-            if not result["usable"]:
-                print(f"  [质量] 小模型: {result['quality']} (score={result['score']:.2f})")
-            return result["usable"]
+            try:
+                result = local_check(content)
+            except ImportError as e:
+                print(f"  [质量] 本地分类器不可用({e})，降级到 LLM/放行")
+                local_check = None
+            except Exception as e:
+                print(f"  [质量] 本地分类器失败({e})，降级到 LLM/放行")
+                local_check = None
+            else:
+                if not result["usable"]:
+                    print(f"  [质量] 小模型: {result['quality']} (score={result['score']:.2f})")
+                return result["usable"]
 
         if llm:
             return _llm_check(content, llm)
