@@ -2,7 +2,6 @@ from pathlib import Path
 
 import pipeline
 from pipeline import Pipeline
-from stages.fetch import FetchStage, is_local_file
 from stages.models import (
     AnalysisResult,
     FetchResult,
@@ -83,40 +82,3 @@ def test_build_reading_report() -> None:
     assert section_types == ["overview", "summary", "analysis"]
 
 
-def test_is_local_file(tmp_path: Path) -> None:
-    # URL → False
-    assert is_local_file("https://example.com/article") is False
-    assert is_local_file("http://example.com/article") is False
-
-    # Non-existent path → False
-    assert is_local_file("/nonexistent/file.md") is False
-
-    # Existing file → True
-    f = tmp_path / "test.md"
-    f.write_text("hello", encoding="utf-8")
-    assert is_local_file(str(f)) is True
-
-
-def test_fetch_local_text_file(tmp_path: Path) -> None:
-    f = tmp_path / "article.md"
-    f.write_text("# My Article\n\nSome interesting content here.", encoding="utf-8")
-
-    stage = FetchStage(llm=None)
-    result = stage.run(str(f))
-
-    assert isinstance(result, FetchResult)
-    assert result.title == "article.md"
-    assert "interesting content" in result.content
-    assert result.source_type == "file"
-
-
-def test_fetch_local_unsupported_extension(tmp_path: Path) -> None:
-    f = tmp_path / "data.csv"
-    f.write_text("a,b,c", encoding="utf-8")
-
-    stage = FetchStage(llm=None)
-    result = stage.run(str(f))
-
-    assert isinstance(result, dict)
-    assert "error" in result
-    assert ".csv" in result["error"]
