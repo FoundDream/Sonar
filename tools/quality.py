@@ -63,7 +63,7 @@ def _llm_check(content: str, llm) -> bool:
 
 
 def make_quality_checker(llm=None):
-    """构造质量检查函数：小模型优先 → LLM 兜底 → 都没有放行。
+    """构造质量检查函数：小模型优先、LLM 兜底 → 都没有放行。
 
     返回 Callable[[str], bool]。
     """
