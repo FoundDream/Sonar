@@ -11,57 +11,30 @@ from tools.fetch import _rewrite_url, _with_retry
 
 # ── URL 重写 ──
 
+@pytest.mark.parametrize("input_url,expected", [
+    # Reddit 变体
+    ("https://www.reddit.com/r/Python/comments/abc", "https://old.reddit.com/r/Python/comments/abc"),
+    ("https://reddit.com/r/Python/comments/abc",     "https://old.reddit.com/r/Python/comments/abc"),
+    ("http://reddit.com/r/test",                     "http://old.reddit.com/r/test"),
+    # X / Twitter 变体
+    ("https://x.com/user/status/123",                "https://fixupx.com/user/status/123"),
+    ("https://www.x.com/user/status/123",            "https://fixupx.com/user/status/123"),
+    ("https://twitter.com/user/status/456",          "https://fixupx.com/user/status/456"),
+    ("https://www.twitter.com/user/status/456",      "https://fixupx.com/user/status/456"),
+    # 不应重写
+    ("https://example.com/article",                  "https://example.com/article"),
+    ("https://notredditor.com/page",                 "https://notredditor.com/page"),  # 相似域名不匹配
+    ("https://old.reddit.com/r/Python",              "https://old.reddit.com/r/Python"),  # 不双重重写
+])
+def test_rewrite_url(input_url, expected):
+    assert _rewrite_url(input_url) == expected
 
-class TestRewriteUrl:
-    """_rewrite_url() 对已知难抓站点做 URL 替换。"""
 
-    def test_reddit_www(self):
-        assert _rewrite_url("https://www.reddit.com/r/Python/comments/abc") == \
-            "https://old.reddit.com/r/Python/comments/abc"
-
-    def test_reddit_no_www(self):
-        assert _rewrite_url("https://reddit.com/r/Python/comments/abc") == \
-            "https://old.reddit.com/r/Python/comments/abc"
-
-    def test_reddit_http(self):
-        assert _rewrite_url("http://reddit.com/r/test") == \
-            "http://old.reddit.com/r/test"
-
-    def test_x_to_fixupx(self):
-        assert _rewrite_url("https://x.com/user/status/123") == \
-            "https://fixupx.com/user/status/123"
-
-    def test_x_www_to_fixupx(self):
-        assert _rewrite_url("https://www.x.com/user/status/123") == \
-            "https://fixupx.com/user/status/123"
-
-    def test_twitter_to_fixupx(self):
-        assert _rewrite_url("https://twitter.com/user/status/456") == \
-            "https://fixupx.com/user/status/456"
-
-    def test_twitter_www_to_fixupx(self):
-        assert _rewrite_url("https://www.twitter.com/user/status/456") == \
-            "https://fixupx.com/user/status/456"
-
-    def test_no_rewrite_for_normal_url(self):
-        url = "https://example.com/article"
-        assert _rewrite_url(url) == url
-
-    def test_no_rewrite_for_similar_domain(self):
-        """不应该匹配包含 reddit 但不是 reddit.com 的域名。"""
-        url = "https://notredditor.com/page"
-        assert _rewrite_url(url) == url
-
-    def test_no_double_rewrite(self):
-        """old.reddit.com 不应该被重写成 old.old.reddit.com。"""
-        url = "https://old.reddit.com/r/Python"
-        assert _rewrite_url(url) == url
-
-    def test_preserves_query_and_fragment(self):
-        url = "https://reddit.com/r/test?sort=new#comments"
-        result = _rewrite_url(url)
-        assert "old.reddit.com" in result
-        assert "?sort=new#comments" in result
+def test_rewrite_url_preserves_query_and_fragment():
+    url = "https://reddit.com/r/test?sort=new#comments"
+    result = _rewrite_url(url)
+    assert "old.reddit.com" in result
+    assert "?sort=new#comments" in result
 
 
 # ── 重试逻辑 ──
