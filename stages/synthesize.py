@@ -9,13 +9,6 @@ from stages.models import ReportData, ResearchPlan, ResearchResult
 from stages.prompts.synthesize import CLASSIFY_TOOL, SYNTHESIZER_PROMPT
 from tools.search import BLOCKED_DOMAINS
 
-
-_FIELD_ALIASES: dict[str, list[str]] = {
-    "explanation": ["explanation", "summary"],
-    "why_important": ["why_important", "key_findings"],
-    "article_role": ["article_role", "relevance"],
-}
-
 _SKIP_FIELDS = {"name", "resources"}
 
 
@@ -64,30 +57,13 @@ class SynthesizeStage:
         return None
 
     def _extract_finding_fields(self, finding: dict) -> dict:
-        """Extract fields from a finding using the plan's schema, with alias mapping."""
+        """Extract fields from a finding using the plan's schema."""
         if self.plan and self.plan.finding_schema:
-            raw: dict[str, str] = {}
-            for field in self.plan.finding_schema:
-                if field.name in _SKIP_FIELDS:
-                    continue
-                raw[field.name] = finding.get(field.name, "")
-
-            # Map schema fields to canonical names via aliases
-            result: dict[str, str] = {}
-            for canonical, aliases in _FIELD_ALIASES.items():
-                for alias in aliases:
-                    if alias in raw and raw[alias]:
-                        result[canonical] = raw.pop(alias)
-                        break
-                else:
-                    # No alias matched with a value; try empty string fallback
-                    for alias in aliases:
-                        if alias in raw:
-                            result[canonical] = raw.pop(alias)
-                            break
-            # Pass through remaining fields (e.g. methodology, example, analogy)
-            result.update(raw)
-            return result
+            return {
+                field.name: finding.get(field.name, "")
+                for field in self.plan.finding_schema
+                if field.name not in _SKIP_FIELDS
+            }
 
         # Fallback: hardcoded explain fields (for reading mode / no plan)
         return {
@@ -191,7 +167,7 @@ class SynthesizeStage:
         # Build paper_list for research mode
         paper_list = []
         if self.plan and self.plan.preset == "academic":
-            paper_list = self._build_paper_list(concepts)
+            paper_list = self._build_paper_list(prerequisites, concepts)
 
         # Build sections list for modular template rendering
         sections = self._build_sections(overview, research, prerequisites, concepts, learning_path, paper_list)
@@ -255,19 +231,24 @@ class SynthesizeStage:
         return sections
 
     @staticmethod
-    def _build_paper_list(concepts: list[dict]) -> list[dict]:
-        """Extract paper-like entries from concepts for research mode."""
+    def _build_paper_list(
+        prerequisites: list[dict], concepts: list[dict]
+    ) -> list[dict]:
+        """Aggregate resources from all concepts into a deduplicated reading list."""
+        seen_urls: set[str] = set()
         papers = []
-        for c in concepts:
-            paper = {
-                "name": c.get("name", ""),
-                "summary": c.get("explanation", ""),
-                "key_findings": c.get("why_important", ""),
-                "relevance": c.get("article_role", ""),
-                "methodology": c.get("methodology", ""),
-                "resources": c.get("resources", []),
-            }
-            papers.append(paper)
+        for item in [*prerequisites, *concepts]:
+            for r in item.get("resources", []):
+                url = r.get("url", "")
+                if not url or url in seen_urls:
+                    continue
+                seen_urls.add(url)
+                papers.append({
+                    "title": r.get("title", ""),
+                    "url": url,
+                    "description": r.get("description", ""),
+                    "from_concept": item.get("name", ""),
+                })
         return papers
 
     @staticmethod

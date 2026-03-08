@@ -42,11 +42,14 @@ EXPLAIN_PRESET = ResearchPlan(
 def _academic_finding_schema() -> list[FieldSpec]:
     return [
         FieldSpec("name", "string", "概念/论文名称", required=True),
-        FieldSpec("summary", "string", "核心内容概述", required=True, min_length=80),
-        FieldSpec("methodology", "string", "研究方法"),
-        FieldSpec("key_findings", "string", "关键发现/结论", required=True, min_length=50),
-        FieldSpec("relevance", "string", "与原文的关联"),
-        FieldSpec("resources", "array", "相关论文和资料链接", required=True),
+        FieldSpec("explanation", "string", "概念的通俗解释，让非专业读者也能理解", required=True, min_length=50),
+        FieldSpec("why_important", "string", "为什么理解这个概念对读懂论文很重要", required=True),
+        FieldSpec("article_role", "string", "这个概念在本论文中具体扮演什么角色"),
+        FieldSpec("methodology", "string", "相关的研究方法（如适用）", required=False),
+        FieldSpec("key_findings", "string", "关键发现/结论（如适用）", required=False),
+        FieldSpec("example", "string", "用一个简短例子帮助读者建立直觉", required=True),
+        FieldSpec("analogy", "string", "可选：用一个类比帮助理解；如果不需要可留空", required=False),
+        FieldSpec("resources", "array", "精选 1-2 条最好的学习资料", required=True),
     ]
 
 
@@ -59,7 +62,7 @@ def _academic_sections() -> list[SectionSpec]:
         SectionSpec("learning_path", "探索路径"),
         SectionSpec("prerequisites", "背景知识"),
         SectionSpec("concepts", "核心概念"),
-        SectionSpec("paper_list", "相关论文"),
+        SectionSpec("paper_list", "延伸阅读"),
     ]
 
 

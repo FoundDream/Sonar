@@ -24,6 +24,12 @@
             <span class="support-text">{{ item.methodology }}</span>
         </div>
         {% endif %}
+        {% if item.key_findings %}
+        <div class="insight-block">
+            <div class="insight-label">关键发现</div>
+            <span class="support-text">{{ item.key_findings }}</span>
+        </div>
+        {% endif %}
         {% if item.example %}
         <div class="insight-block">
             <div class="insight-label">例子</div>

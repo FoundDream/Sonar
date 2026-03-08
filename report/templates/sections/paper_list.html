@@ -1,33 +1,16 @@
 {% if paper_list %}
 <div class="section">
-    <h2>相关论文</h2>
-    <p class="section-desc">与本文相关的重要论文和研究</p>
+    <h2>延伸阅读</h2>
+    <p class="section-desc">报告中引用的全部学习资料汇总</p>
 
-    {% for paper in paper_list %}
-    <div class="article-card" style="margin-bottom: 1rem;">
-        <h3>{{ paper.name }}</h3>
-        {% if paper.summary %}
-        <p>{{ paper.summary }}</p>
-        {% endif %}
-        {% if paper.key_findings %}
-        <p class="meta-note">关键发现：{{ paper.key_findings }}</p>
-        {% endif %}
-        {% if paper.relevance %}
-        <p class="meta-note">与本文关联：{{ paper.relevance }}</p>
-        {% endif %}
-        {% if paper.resources %}
-        <div class="resources">
-            {% for r in paper.resources %}
-            {% if r.url and r.title %}
-            <div class="resource-item">
-                <a href="{{ r.url }}" target="_blank">{{ r.title }}</a>
-                {% if r.description %}<span class="desc">— {{ r.description }}</span>{% endif %}
-            </div>
-            {% endif %}
-            {% endfor %}
-        </div>
-        {% endif %}
+    {% for item in paper_list %}
+    {% if item.url and item.title %}
+    <div class="resource-item" style="margin-bottom: 0.6rem;">
+        <a href="{{ item.url }}" target="_blank">{{ item.title }}</a>
+        {% if item.description %}<span class="desc">— {{ item.description }}</span>{% endif %}
+        {% if item.from_concept %}<span class="desc" style="opacity:0.5;">（{{ item.from_concept }}）</span>{% endif %}
     </div>
+    {% endif %}
     {% endfor %}
 </div>
 {% endif %}
