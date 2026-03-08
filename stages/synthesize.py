@@ -10,6 +10,15 @@ from stages.prompts.synthesize import CLASSIFY_TOOL, SYNTHESIZER_PROMPT
 from tools.search import BLOCKED_DOMAINS
 
 
+_FIELD_ALIASES: dict[str, list[str]] = {
+    "explanation": ["explanation", "summary"],
+    "why_important": ["why_important", "key_findings"],
+    "article_role": ["article_role", "relevance"],
+}
+
+_SKIP_FIELDS = {"name", "resources"}
+
+
 class SynthesizeStage:
     def __init__(self, llm: LLMClient, plan: ResearchPlan | None = None):
         self.llm = llm
@@ -53,6 +62,41 @@ class SynthesizeStage:
                     except json.JSONDecodeError as e:
                         print(f"[Synthesizer] JSON 解析失败: {e}")
         return None
+
+    def _extract_finding_fields(self, finding: dict) -> dict:
+        """Extract fields from a finding using the plan's schema, with alias mapping."""
+        if self.plan and self.plan.finding_schema:
+            raw: dict[str, str] = {}
+            for field in self.plan.finding_schema:
+                if field.name in _SKIP_FIELDS:
+                    continue
+                raw[field.name] = finding.get(field.name, "")
+
+            # Map schema fields to canonical names via aliases
+            result: dict[str, str] = {}
+            for canonical, aliases in _FIELD_ALIASES.items():
+                for alias in aliases:
+                    if alias in raw and raw[alias]:
+                        result[canonical] = raw.pop(alias)
+                        break
+                else:
+                    # No alias matched with a value; try empty string fallback
+                    for alias in aliases:
+                        if alias in raw:
+                            result[canonical] = raw.pop(alias)
+                            break
+            # Pass through remaining fields (e.g. methodology, example, analogy)
+            result.update(raw)
+            return result
+
+        # Fallback: hardcoded explain fields (for reading mode / no plan)
+        return {
+            "explanation": finding.get("explanation", ""),
+            "why_important": finding.get("why_important", ""),
+            "article_role": finding.get("article_role", ""),
+            "example": finding.get("example", ""),
+            "analogy": finding.get("analogy", ""),
+        }
 
     def _assemble(self, research: ResearchResult, classification: dict | None) -> dict:
         if classification:
@@ -109,44 +153,31 @@ class SynthesizeStage:
             finding = research.findings.get(name, {})
             if not finding:
                 continue
-            prerequisites.append({
-                "name": finding.get("name", name),
-                "explanation": finding.get("explanation", ""),
-                "why_learn_first": item.get("why_learn_first", ""),
-                "priority": item.get("priority", "should"),
-                "example": finding.get("example", ""),
-                "analogy": finding.get("analogy", ""),
-                "resources": _filter_resources(finding.get("resources", [])),
-            })
+            fields = self._extract_finding_fields(finding)
+            fields["name"] = finding.get("name", name)
+            fields["why_learn_first"] = item.get("why_learn_first", "")
+            fields["priority"] = item.get("priority", "should")
+            fields["resources"] = _filter_resources(finding.get("resources", []))
+            prerequisites.append(fields)
 
         concepts = []
         for name in concept_names:
             finding = research.findings.get(name, {})
             if not finding:
                 continue
-            concepts.append({
-                "name": finding.get("name", name),
-                "explanation": finding.get("explanation", ""),
-                "why_important": finding.get("why_important", ""),
-                "article_role": finding.get("article_role", ""),
-                "example": finding.get("example", ""),
-                "analogy": finding.get("analogy", ""),
-                "resources": _filter_resources(finding.get("resources", [])),
-            })
+            fields = self._extract_finding_fields(finding)
+            fields["name"] = finding.get("name", name)
+            fields["resources"] = _filter_resources(finding.get("resources", []))
+            concepts.append(fields)
 
         classified = prereq_name_set | set(concept_names)
         for name in research.findings:
             if name not in classified:
                 finding = research.findings[name]
-                concepts.append({
-                    "name": finding.get("name", name),
-                    "explanation": finding.get("explanation", ""),
-                    "why_important": finding.get("why_important", ""),
-                    "article_role": finding.get("article_role", ""),
-                    "example": finding.get("example", ""),
-                    "analogy": finding.get("analogy", ""),
-                    "resources": _filter_resources(finding.get("resources", [])),
-                })
+                fields = self._extract_finding_fields(finding)
+                fields["name"] = finding.get("name", name)
+                fields["resources"] = _filter_resources(finding.get("resources", []))
+                concepts.append(fields)
 
         overview = dict(research.overview) if research.overview else {}
         has_must_prereqs = any(p.get("priority") == "must" for p in prerequisites)
@@ -160,7 +191,7 @@ class SynthesizeStage:
         # Build paper_list for research mode
         paper_list = []
         if self.plan and self.plan.preset == "academic":
-            paper_list = self._build_paper_list(concepts, _filter_resources)
+            paper_list = self._build_paper_list(concepts)
 
         # Build sections list for modular template rendering
         sections = self._build_sections(overview, research, prerequisites, concepts, learning_path, paper_list)
@@ -224,15 +255,15 @@ class SynthesizeStage:
         return sections
 
     @staticmethod
-    def _build_paper_list(concepts: list[dict], filter_fn) -> list[dict]:
+    def _build_paper_list(concepts: list[dict]) -> list[dict]:
         """Extract paper-like entries from concepts for research mode."""
         papers = []
         for c in concepts:
             paper = {
                 "name": c.get("name", ""),
-                "summary": c.get("summary", c.get("explanation", "")),
-                "key_findings": c.get("key_findings", c.get("why_important", "")),
-                "relevance": c.get("relevance", c.get("article_role", "")),
+                "summary": c.get("explanation", ""),
+                "key_findings": c.get("why_important", ""),
+                "relevance": c.get("article_role", ""),
                 "methodology": c.get("methodology", ""),
                 "resources": c.get("resources", []),
             }

@@ -18,6 +18,12 @@
             {{ item.why_learn_first }}
         </div>
         {% endif %}
+        {% if item.methodology %}
+        <div class="insight-block">
+            <div class="insight-label">研究方法</div>
+            <span class="support-text">{{ item.methodology }}</span>
+        </div>
+        {% endif %}
         {% if item.example %}
         <div class="insight-block">
             <div class="insight-label">例子</div>
