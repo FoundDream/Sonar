@@ -1,4 +1,4 @@
-"""Pipeline 编排器：链式执行 stages，支持断点恢复。"""
+"""Pipeline 编排器：orchestrator 模式，支持 review → research 返工循环和断点恢复。"""
 
 import os
 import re
@@ -20,43 +20,43 @@ from stages.models import (
     save_stage_output,
 )
 from stages.research import ResearchStage
+from stages.review import ReviewStage
 from stages.synthesize import SynthesizeStage
 
 OUTPUT_DIR = "output"
 RUNS_DIR = os.path.join(OUTPUT_DIR, "runs")
 LATEST_RUN_FILE = os.path.join(OUTPUT_DIR, "latest_run.txt")
 LEGACY_RUN_ID = "__legacy__"
+
+# Resume-able stages (review is not independently resumable)
 STAGE_ORDER = ["fetch", "analyze", "plan", "research", "synthesize"]
+
+MAX_REVIEW_CYCLES = 1
 
 
 class Pipeline:
     def __init__(self, llm: LLMClient, mode: str = "explain", goal: str = ""):
         self.llm = llm
         self.mode = mode
-        self.preset = mode  # reading 模式不会用到 preset
+        self.preset = mode
         self.goal = goal
         self.run_id: str | None = None
         self.run_dir: str = OUTPUT_DIR
 
     def run(self, source: str, resume_from: str | None = None, run_id: str | None = None) -> str:
-        """Run the pipeline. Routes based on mode.
-
-        source: URL or local file path.
-        Returns the output HTML path.
-        """
         self._init_run_storage(resume_from=resume_from, run_id=run_id)
         if self.mode == "reading":
             return self._run_reading(source, resume_from)
-        return self._run_fixed(source, resume_from)
+        return self._run_orchestrated(source, resume_from)
+
+    # ── Reading mode (simple linear) ──────────────────────────────
 
     def _run_reading(self, source: str, resume_from: str | None = None) -> str:
-        """Reading mode: Fetch -> Analyze -> Render. No concept research."""
         print("[Pipeline] 阅读报告模式")
 
         fetch_result: FetchResult | None = None
         analysis: AnalysisResult | None = None
 
-        # Load cached stages if resuming
         if resume_from == "synthesize":
             analysis = AnalysisResult.from_dict(
                 load_stage_output(self._stage_path("analyze"))
@@ -70,7 +70,6 @@ class Pipeline:
                 load_stage_output(self._stage_path("analyze"))
             )
 
-        # Fetch
         if not analysis and not fetch_result:
             stage = FetchStage(self.llm)
             result = stage.run(source)
@@ -79,7 +78,6 @@ class Pipeline:
             fetch_result = result
             save_stage_output(fetch_result.to_dict(), self._stage_path("fetch"))
 
-        # Analyze
         if not analysis:
             stage = AnalyzeStage(self.llm)
             result = stage.run(fetch_result)
@@ -88,7 +86,6 @@ class Pipeline:
             analysis = result
             save_stage_output(analysis.to_dict(), self._stage_path("analyze"))
 
-        # Build reading report directly from analysis
         report_data = self._build_reading_report(analysis)
         save_stage_output(report_data.to_dict(), self._stage_path("synthesize"))
 
@@ -98,7 +95,6 @@ class Pipeline:
 
     @staticmethod
     def _build_reading_report(analysis: AnalysisResult) -> ReportData:
-        """Assemble a reading report from analysis output. No concepts/research."""
         sections = [{"type": "overview"}, {"type": "summary"}]
         if analysis.article_analysis:
             sections.append({"type": "analysis"})
@@ -112,85 +108,123 @@ class Pipeline:
             sections=sections,
         )
 
-    def _run_fixed(self, source: str, resume_from: str | None = None) -> str:
-        """Run the fixed pipeline, optionally resuming from a stage.
+    # ── Orchestrated mode (with review loop) ──────────────────────
 
-        Returns the output HTML path.
-        """
+    def _run_orchestrated(self, source: str, resume_from: str | None = None) -> str:
+        """Orchestrator: dispatch steps with transitions, supporting review→research loop."""
         if resume_from:
             if resume_from not in STAGE_ORDER:
                 raise ValueError(f"Unknown stage: {resume_from}. Valid: {STAGE_ORDER}")
-            start_idx = STAGE_ORDER.index(resume_from)
+            start_step = resume_from
         else:
-            start_idx = 0
+            start_step = "fetch"
 
-        fetch_result: FetchResult | None = None
-        analysis: AnalysisResult | None = None
-        plan: ResearchPlan | None = None
-        research: ResearchResult | None = None
-        report_data: ReportData | None = None
+        # Load cached state for resume
+        ctx = self._load_context(source, start_step)
 
-        if start_idx > 0:
-            source = self._load_source(source)
+        # Orchestrator loop
+        step = start_step
+        while step:
+            step = self._execute_step(step, ctx)
 
-        if start_idx > STAGE_ORDER.index("fetch"):
-            fetch_result = FetchResult.from_dict(
+        # Render HTML
+        output_path = render_report(ctx["report_data"].to_dict(), self._report_path())
+        self._publish_latest_report(output_path)
+        return output_path
+
+    def _execute_step(self, step: str, ctx: dict) -> str | None:
+        """Execute a step and return the next step (or None to stop)."""
+
+        if step == "fetch":
+            stage = FetchStage(self.llm)
+            result = stage.run(ctx["source"])
+            if isinstance(result, dict) and "error" in result:
+                raise RuntimeError(result["error"])
+            ctx["fetch_result"] = result
+            save_stage_output(result.to_dict(), self._stage_path("fetch"))
+            return "analyze"
+
+        if step == "analyze":
+            stage = AnalyzeStage(self.llm)
+            result = stage.run(ctx["fetch_result"])
+            if isinstance(result, dict) and "error" in result:
+                raise RuntimeError(result["error"])
+            ctx["analysis"] = result
+            save_stage_output(result.to_dict(), self._stage_path("analyze"))
+            return "plan"
+
+        if step == "plan":
+            from stages.plan import PlanStage
+            stage = PlanStage(self.llm)
+            ctx["plan"] = stage.run(self.preset, self.goal, ctx["analysis"])
+            save_stage_output(ctx["plan"].to_dict(), self._stage_path("plan"))
+            return "research"
+
+        if step == "research":
+            stage = ResearchStage(self.llm, ctx.get("plan"))
+            ctx["research"] = stage.run(ctx["analysis"])
+            save_stage_output(ctx["research"].to_dict(), self._stage_path("research"))
+            return "review"
+
+        if step == "review":
+            review_stage = ReviewStage(ctx.get("plan"))
+            review = review_stage.run(ctx["research"])
+
+            cycle = ctx.get("review_cycle", 0)
+            if not review.passed and cycle < MAX_REVIEW_CYCLES:
+                ctx["review_cycle"] = cycle + 1
+                # Rework flagged concepts
+                research_stage = ResearchStage(self.llm, ctx.get("plan"))
+                ctx["research"] = research_stage.rework(ctx["research"], review.rework)
+                save_stage_output(ctx["research"].to_dict(), self._stage_path("research"))
+                # Re-review after rework
+                return "review"
+            return "synthesize"
+
+        if step == "synthesize":
+            stage = SynthesizeStage(self.llm, ctx.get("plan"))
+            ctx["report_data"] = stage.run(ctx["research"])
+            save_stage_output(ctx["report_data"].to_dict(), self._stage_path("synthesize"))
+            return None
+
+        raise ValueError(f"Unknown step: {step}")
+
+    def _load_context(self, source: str, start_step: str) -> dict:
+        """Load cached stage outputs needed for the start step."""
+        ctx: dict = {"source": source}
+
+        if start_step == "fetch":
+            return ctx
+
+        # Need source from prior outputs if not provided
+        if not source:
+            ctx["source"] = self._load_source(source)
+
+        step_idx = STAGE_ORDER.index(start_step)
+
+        if step_idx > STAGE_ORDER.index("fetch"):
+            ctx["fetch_result"] = FetchResult.from_dict(
                 load_stage_output(self._stage_path("fetch"))
             )
 
-        if start_idx > STAGE_ORDER.index("analyze"):
-            analysis = AnalysisResult.from_dict(
+        if step_idx > STAGE_ORDER.index("analyze"):
+            ctx["analysis"] = AnalysisResult.from_dict(
                 load_stage_output(self._stage_path("analyze"))
             )
 
-        if start_idx > STAGE_ORDER.index("plan"):
+        if step_idx > STAGE_ORDER.index("plan"):
             plan_path = self._stage_path("plan")
             if os.path.exists(plan_path):
-                plan = ResearchPlan.from_dict(load_stage_output(plan_path))
+                ctx["plan"] = ResearchPlan.from_dict(load_stage_output(plan_path))
 
-        if start_idx > STAGE_ORDER.index("research"):
-            research = ResearchResult.from_dict(
+        if step_idx > STAGE_ORDER.index("research"):
+            ctx["research"] = ResearchResult.from_dict(
                 load_stage_output(self._stage_path("research"))
             )
 
-        # Execute stages from start point
-        for stage_name in STAGE_ORDER[start_idx:]:
-            if stage_name == "fetch":
-                stage = FetchStage(self.llm)
-                result = stage.run(source)
-                if isinstance(result, dict) and "error" in result:
-                    raise RuntimeError(result["error"])
-                fetch_result = result
-                save_stage_output(fetch_result.to_dict(), self._stage_path("fetch"))
+        return ctx
 
-            elif stage_name == "analyze":
-                stage = AnalyzeStage(self.llm)
-                result = stage.run(fetch_result)
-                if isinstance(result, dict) and "error" in result:
-                    raise RuntimeError(result["error"])
-                analysis = result
-                save_stage_output(analysis.to_dict(), self._stage_path("analyze"))
-
-            elif stage_name == "plan":
-                from stages.plan import PlanStage
-                stage = PlanStage(self.llm)
-                plan = stage.run(self.preset, self.goal, analysis)
-                save_stage_output(plan.to_dict(), self._stage_path("plan"))
-
-            elif stage_name == "research":
-                stage = ResearchStage(self.llm, plan)
-                research = stage.run(analysis)
-                save_stage_output(research.to_dict(), self._stage_path("research"))
-
-            elif stage_name == "synthesize":
-                stage = SynthesizeStage(self.llm, plan)
-                report_data = stage.run(research)
-                save_stage_output(report_data.to_dict(), self._stage_path("synthesize"))
-
-        # Render HTML
-        output_path = render_report(report_data.to_dict(), self._report_path())
-        self._publish_latest_report(output_path)
-        return output_path
+    # ── Storage helpers ───────────────────────────────────────────
 
     def _stage_path(self, stage: str) -> str:
         return os.path.join(self.run_dir, f"{stage}.json")
@@ -246,7 +280,6 @@ class Pipeline:
         return content or None
 
     def _load_source(self, source: str) -> str:
-        """Try to get source from prior stage outputs when resuming."""
         if source:
             return source
         for stage in ["fetch", "analyze", "research"]:

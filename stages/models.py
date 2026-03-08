@@ -177,6 +177,33 @@ class ResearchResult:
 
 
 @dataclass
+class ReworkItem:
+    """Reviewer 指出的需要返工的概念。"""
+    concept: str
+    feedback: str = ""
+
+
+@dataclass
+class ReviewResult:
+    """Review 阶段输出。"""
+    passed: bool = True
+    rework: list[ReworkItem] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        return {
+            "passed": self.passed,
+            "rework": [{"concept": r.concept, "feedback": r.feedback} for r in self.rework],
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> ReviewResult:
+        return cls(
+            passed=data.get("passed", True),
+            rework=[ReworkItem(**r) for r in data.get("rework", [])],
+        )
+
+
+@dataclass
 class ReportData:
     """Synthesize 阶段输出，即最终报告数据。"""
     title: str = ""

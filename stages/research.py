@@ -5,7 +5,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from llm.client import LLMClient
 from report.schema import format_issues, validate_concept, validate_finding
-from stages.models import AnalysisResult, FieldSpec, ResearchPlan, ResearchResult
+from stages.models import AnalysisResult, FieldSpec, ResearchPlan, ResearchResult, ReworkItem
 from stages.prompts.research import RESEARCHER_PROMPT
 from stages.prompts.schemas import CONCEPT_DONE_TOOL, build_finding_tool
 from stages.prompts.verify import VERIFIER_PROMPT, VERIFY_TOOL
@@ -282,4 +282,59 @@ class ResearchStage:
             article_analysis=analysis.article_analysis,
             concepts=analysis.concepts,
             findings=findings,
+        )
+
+    def rework(self, research: ResearchResult, rework_items: list[ReworkItem]) -> ResearchResult:
+        """Re-research specific concepts with reviewer feedback, merge into existing results."""
+        concepts_to_redo = [item.concept for item in rework_items]
+        feedback_map = {item.concept: item.feedback for item in rework_items}
+
+        print(f"\n--- 返工 {len(concepts_to_redo)} 个概念 ---")
+
+        researcher_prompt = self.plan.researcher_prompt if self.plan else None
+        base_hints = self.plan.concept_hints if self.plan else {}
+
+        def _research_one(concept: str) -> tuple[str, dict]:
+            researcher = ConceptResearcher(
+                self.llm, self._finding_tool, researcher_prompt, self._finding_schema
+            )
+            verifier = ConceptVerifier(self.llm, self._finding_schema)
+
+            hints = base_hints.get(concept, "")
+            feedback = feedback_map.get(concept, "")
+            combined = f"{hints}\n上一轮审查反馈：{feedback}".strip() if feedback else hints
+            result = researcher.research(concept, research.article_summary, hints=combined)
+
+            verdict = verifier.verify(result, research.article_summary)
+            if verdict.get("pass", True):
+                print(f"  [审查] {concept}: 通过")
+            else:
+                print(f"  [审查] {concept}: 仍未通过，保留当前结果")
+
+            return concept, result
+
+        updated_findings = dict(research.findings)
+
+        with ThreadPoolExecutor(max_workers=min(len(concepts_to_redo), 4)) as pool:
+            futures = {pool.submit(_research_one, c): c for c in concepts_to_redo}
+            for future in as_completed(futures):
+                concept = futures[future]
+                try:
+                    _, result = future.result()
+                    updated_findings[concept] = result
+                    n_resources = len(result.get("resources", []))
+                    print(f"[返工完成] {concept}: {n_resources} 条资料")
+                except Exception as e:
+                    print(f"[错误] {concept} 返工失败: {e}")
+
+        print("\n--- 返工完成 ---")
+
+        return ResearchResult(
+            url=research.url,
+            article_title=research.article_title,
+            article_summary=research.article_summary,
+            overview=research.overview,
+            article_analysis=research.article_analysis,
+            concepts=research.concepts,
+            findings=updated_findings,
         )
