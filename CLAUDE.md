@@ -1,5 +1,11 @@
 # Sonar — CLAUDE.md
 
+## 规则
+
+每次修改代码后，如果涉及架构、模式、CLI 接口、文件职责的变动，必须同步更新：
+- `CLAUDE.md`（架构和 checklist）
+- `README.md`（用法说明）
+
 ## 项目概述
 
 输入文章 URL 或本地文件，自动生成结构化学习/阅读报告的 AI pipeline 工具。
