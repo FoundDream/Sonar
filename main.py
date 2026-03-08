@@ -16,10 +16,8 @@ def main():
         description="Sonar - 帮你读懂任何文章的学习助手",
     )
     parser.add_argument("source", nargs="?", help="文章 URL 或本地文件路径（.pdf / .md / .txt / .html）")
-    parser.add_argument("--mode", default="learning", choices=["reading", "learning"],
-                        help="报告模式: reading=阅读报告, learning=概念学习 (default: learning)")
-    parser.add_argument("--preset", default="beginner", choices=["beginner", "research"],
-                        help="学习模式的预设 (default: beginner)")
+    parser.add_argument("--mode", default="explain", choices=["reading", "explain", "academic"],
+                        help="报告模式: reading=阅读报告, explain=概念解读, academic=论文探索 (default: explain)")
     parser.add_argument("--goal", default="", help="自定义学习目标")
     parser.add_argument("--resume-from", dest="resume_from",
                         choices=["fetch", "analyze", "plan", "research", "synthesize"],
@@ -36,7 +34,7 @@ def main():
     source = args.source or ""
     print(f"Sonar - 正在分析: {source or '(从缓存恢复)'}\n")
 
-    pipeline = Pipeline(llm, mode=args.mode, preset=args.preset, goal=args.goal)
+    pipeline = Pipeline(llm, mode=args.mode, goal=args.goal)
     try:
         output_path = pipeline.run(source, resume_from=args.resume_from, run_id=args.run_id or None)
     except (RuntimeError, ValueError) as e:

@@ -23,6 +23,7 @@ from stages.research import ResearchStage
 from stages.synthesize import SynthesizeStage
 
 OUTPUT_DIR = "output"
+_MODE_TO_PRESET = {"explain": "beginner", "academic": "research"}
 RUNS_DIR = os.path.join(OUTPUT_DIR, "runs")
 LATEST_RUN_FILE = os.path.join(OUTPUT_DIR, "latest_run.txt")
 LEGACY_RUN_ID = "__legacy__"
@@ -30,11 +31,10 @@ STAGE_ORDER = ["fetch", "analyze", "plan", "research", "synthesize"]
 
 
 class Pipeline:
-    def __init__(self, llm: LLMClient, mode: str = "learning", preset: str = "beginner",
-                 goal: str = ""):
+    def __init__(self, llm: LLMClient, mode: str = "explain", goal: str = ""):
         self.llm = llm
         self.mode = mode
-        self.preset = preset
+        self.preset = _MODE_TO_PRESET.get(mode, "beginner")
         self.goal = goal
         self.run_id: str | None = None
         self.run_dir: str = OUTPUT_DIR
@@ -48,7 +48,7 @@ class Pipeline:
         self._init_run_storage(resume_from=resume_from, run_id=run_id)
         if self.mode == "reading":
             return self._run_reading(source, resume_from)
-        return self._run_fixed(source, resume_from)
+        return self._run_fixed(source, resume_from)  # explain / academic
 
     def _run_reading(self, source: str, resume_from: str | None = None) -> str:
         """Reading mode: Fetch -> Analyze -> Render. No concept research."""
