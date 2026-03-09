@@ -1,8 +1,9 @@
-"""合成器：分类概念、组装报告数据。"""
+"""合成器 Agent：分类概念、组装报告数据。"""
 
 import json
 from urllib.parse import urlparse
 
+from agents.base import Agent
 from models import ReportData, ResearchPlan, ResearchResult
 from report.schema import format_issues, has_errors, validate_report
 from tools.llm import LLMClient
@@ -99,49 +100,27 @@ _SKIP_FIELDS = {"name", "resources"}
 
 # ── Agent ─────────────────────────────────────────────────────────
 
-class Synthesizer:
+class Synthesizer(Agent):
     def __init__(self, llm: LLMClient, plan: ResearchPlan | None = None):
-        self.llm = llm
+        synthesizer_prompt = (plan.synthesizer_prompt if plan else None) or SYNTHESIZER_PROMPT
+        classify_tool = (plan.classify_tool if plan else None) or CLASSIFY_TOOL
+        super().__init__(llm, name="合成员", system_prompt=synthesizer_prompt, max_iterations=3)
         self.plan = plan
+        self.add_terminal_tool(classify_tool)
 
     def synthesize(self, research: ResearchResult) -> ReportData:
-        classification = self._classify(research)
-        report_dict = self._assemble(research, classification)
-        return ReportData.from_dict(report_dict)
-
-    def _classify(self, research: ResearchResult) -> dict | None:
         concept_names = list(research.findings.keys())
-        synthesizer_prompt = SYNTHESIZER_PROMPT
-        classify_tool = CLASSIFY_TOOL
-        if self.plan:
-            if self.plan.synthesizer_prompt:
-                synthesizer_prompt = self.plan.synthesizer_prompt
-            if self.plan.classify_tool:
-                classify_tool = self.plan.classify_tool
-
-        messages = [
-            {"role": "system", "content": synthesizer_prompt},
-            {"role": "user", "content": f"""文章标题: {research.article_title}
+        print(f"[Synthesizer] 对 {len(concept_names)} 个概念进行分类...")
+        task = f"""文章标题: {research.article_title}
 文章摘要: {research.article_summary}
 
 已研究的概念列表:
 {json.dumps(concept_names, ensure_ascii=False)}
 
-请调用 classify_concepts 对这些概念进行分类、标注优先级、编排学习路径。"""},
-        ]
-
-        print(f"[Synthesizer] 对 {len(concept_names)} 个概念进行分类...")
-        resp = self.llm.chat(messages, tools=[classify_tool])
-
-        if "tool_calls" in resp:
-            for tc in resp["tool_calls"]:
-                fn_name = tc["function"]["name"]
-                if fn_name == classify_tool["function"]["name"]:
-                    try:
-                        return json.loads(tc["function"]["arguments"])
-                    except json.JSONDecodeError as e:
-                        print(f"[Synthesizer] JSON 解析失败: {e}")
-        return None
+请调用 classify_concepts 对这些概念进行分类、标注优先级、编排学习路径。"""
+        classification = self.run(task)
+        report_dict = self._assemble(research, classification)
+        return ReportData.from_dict(report_dict)
 
     def _extract_finding_fields(self, finding: dict) -> dict:
         if self.plan and self.plan.finding_schema:

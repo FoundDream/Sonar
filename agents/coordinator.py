@@ -39,7 +39,6 @@ LEGACY_RUN_ID = "__legacy__"
 STAGE_ORDER = ["fetch", "analyze", "plan", "research", "synthesize"]
 
 MAX_REVIEW_CYCLES = 1
-MAX_VERIFY_RETRIES = 1
 
 # ── Coordinator Prompt ───────────────────────────────────────────
 
@@ -734,25 +733,10 @@ class Coordinator(Agent):
         base_hints = plan.concept_hints if plan else {}
 
         def _research_one(concept: str) -> tuple[str, dict]:
-            researcher = Researcher(self.llm, finding_tool, researcher_prompt, finding_schema)
             verifier = Verifier(self.llm, finding_schema)
-
+            researcher = Researcher(self.llm, verifier, finding_tool, researcher_prompt, finding_schema)
             hints = (hint_overrides or {}).get(concept, base_hints.get(concept, ""))
             result = researcher.research(concept, summary, hints=hints)
-
-            for attempt in range(1 + MAX_VERIFY_RETRIES):
-                verdict = verifier.verify(result, summary)
-                if verdict.get("pass", True):
-                    print(f"  [审查] {concept}: 通过")
-                    break
-                if attempt < MAX_VERIFY_RETRIES:
-                    feedback = verdict.get("feedback", "")
-                    combined_hints = f"{hints}\n{feedback}".strip() if hints else feedback
-                    print(f"  [审查] {concept}: 未通过，重新研究 — {feedback[:80]}")
-                    result = researcher.research(concept, summary, hints=combined_hints)
-                else:
-                    print(f"  [审查] {concept}: 重试后仍未通过，保留当前结果")
-
             return concept, result
 
         findings: dict[str, dict] = {}

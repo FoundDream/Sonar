@@ -27,7 +27,8 @@ RESEARCHER_PROMPT = """\
 2. 优先选择可靠域名的资料（官方文档、知名博客、教育机构网站、高质量学术来源）
 3. 参考 published_date 优先选择较新的资料
 4. 只在 snippet 不足以判断质量时才用 fetch_resource 查看详情
-5. 搜索 2-3 次后，调用 concept_done 提交结构化结果
+5. 搜索 2-3 次后，调用 concept_done 提交结构化结果。
+   如果收到审查反馈（status: needs_revision），根据反馈补充搜索后再次提交
 
 ## 资料来源要求
 
@@ -149,38 +150,87 @@ def build_finding_tool(field_specs: list[FieldSpec]) -> dict:
 class Researcher(Agent):
     """Agent that researches a single concept using search and fetch tools."""
 
-    def __init__(self, llm: LLMClient, finding_tool: dict | None = None,
+    MAX_VERIFY_RETRIES = 2  # 最多被 Verifier 拒绝 2 次后接受结果
+
+    def __init__(self, llm: LLMClient, verifier=None,
+                 finding_tool: dict | None = None,
                  researcher_prompt: str | None = None,
                  finding_schema: list[FieldSpec] | None = None):
         super().__init__(
             llm,
             name="研究员",
             system_prompt=researcher_prompt or RESEARCHER_PROMPT,
-            max_iterations=5,
+            max_iterations=10,
         )
         self._finding_schema = finding_schema
+        self._verifier = verifier
+
+        # 每次 research() 调用重置
+        self._summary: str = ""
+        self._verify_count: int = 0
+        self._stop: bool = False
+        self._final_result: dict = {}
 
         self.add_tool(SEARCH_TOOL, handler=search)
         self.add_tool(FETCH_RESOURCE_TOOL, handler=fetch_resource)
-        self.add_terminal_tool(finding_tool or CONCEPT_DONE_TOOL)
+        # concept_done 为非终止工具，由 _handle_submit 处理
+        self.add_tool(finding_tool or CONCEPT_DONE_TOOL, handler=self._handle_submit)
 
-    def research(self, concept: str, article_summary: str, hints: str = "") -> dict:
-        """Research a concept and return the finding dict."""
-        task = self._build_task(concept, article_summary, hints)
-        result = self.run(task)
-        return result or dict(EMPTY_FINDING, name=concept)
-
-    def validate_result(self, tool_name: str, args: dict) -> str | None:
+    def _handle_submit(self, **args) -> dict:
+        """concept_done 的处理器：格式校验 → 内联 Verifier → 通过/反馈。"""
+        # Step 1: 格式校验
         if self._finding_schema:
             issues = validate_finding(args, self._finding_schema)
         else:
             issues = validate_concept(args)
         errors = [iss for iss in issues if iss.severity == "error"]
-        if not errors:
-            return None
-        return "结果未通过质量检查，请修正后重新调用 concept_done:\n" + format_issues(errors)
+        if errors:
+            return {"status": "rejected", "reason": "格式校验失败:\n" + format_issues(errors)}
+
+        # Step 2: 无 Verifier 时直接接受（向后兼容）
+        if self._verifier is None:
+            self._stop = True
+            self._final_result = args
+            return {"status": "accepted"}
+
+        # Step 3: 运行 Verifier
+        self._verify_count += 1
+        verdict = self._verifier.verify(args, self._summary)
+
+        if verdict.get("pass", True):
+            self._log(f"审查通过（第 {self._verify_count} 次提交）")
+            self._stop = True
+            self._final_result = args
+            return {"status": "accepted"}
+
+        feedback = verdict.get("feedback", "审查未通过")
+
+        if self._verify_count >= Researcher.MAX_VERIFY_RETRIES:
+            self._log(f"已达最大审查次数 ({self._verify_count})，接受当前结果")
+            self._stop = True
+            self._final_result = args
+            return {"status": "accepted_after_max_retries"}
+
+        self._log(f"审查未通过（第 {self._verify_count} 次），要求修改")
+        return {
+            "status": "needs_revision",
+            "feedback": feedback,
+            "instruction": "请根据反馈补充搜索后再次调用 concept_done 提交。",
+        }
+
+    def research(self, concept: str, article_summary: str, hints: str = "") -> dict:
+        """Research a concept and return the finding dict."""
+        self._summary = article_summary
+        self._verify_count = 0
+        self._stop = False
+        self._final_result = {}
+        task = self._build_task(concept, article_summary, hints)
+        result = self.run(task)
+        return self._final_result or result or dict(EMPTY_FINDING, name=concept)
 
     def on_timeout(self, messages: list[dict]) -> dict:
+        if self._final_result:
+            return self._final_result
         result = super().on_timeout(messages)
         return result or dict(EMPTY_FINDING)
 

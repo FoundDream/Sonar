@@ -103,6 +103,9 @@ class Agent:
                     "tool_call_id": call_id,
                     "content": result_str,
                 })
+                # handler 可以设置 _stop=True 提前退出循环
+                if getattr(self, '_stop', False):
+                    return getattr(self, '_final_result', {})
 
         # Timeout: try to force a result, or return best partial result
         if best_result:

@@ -3,6 +3,7 @@
 from agents.base import Agent
 from models import FieldSpec
 from tools.llm import LLMClient
+from tools.search import SEARCH_TOOL, search
 
 # ── Prompt ────────────────────────────────────────────────────────
 
@@ -24,6 +25,9 @@ VERIFIER_PROMPT = """\
    - 合格：资料直接针对该概念，来源可信
 
 调用 verify_result 提交你的审查结果。
+
+如果你对某条资料的相关性有疑问，可以用 search 搜索该概念，
+帮助你判断资料是否对口。不必每次都搜，仅在真正不确定时使用。
 """
 
 # ── Tool ──────────────────────────────────────────────────────────
@@ -61,9 +65,10 @@ class Verifier(Agent):
             llm,
             name="审查员",
             system_prompt=VERIFIER_PROMPT,
-            max_iterations=1,
+            max_iterations=3,
         )
         self._finding_schema = finding_schema
+        self.add_tool(SEARCH_TOOL, handler=search)
         self.add_terminal_tool(VERIFY_TOOL)
 
     def verify(self, result: dict, article_summary: str) -> dict:

@@ -3,6 +3,7 @@
 from agents.base import Agent
 from models import ResearchResult, ReviewResult, ReworkItem
 from tools.llm import LLMClient
+from tools.search import SEARCH_TOOL, search
 
 # ── Prompt ────────────────────────────────────────────────────────
 
@@ -24,6 +25,9 @@ REVIEWER_PROMPT = """\
    - 合格：有 1-2 条来源可信的资料
 
 只标记真正有问题的概念。大多数概念应该能通过。
+
+如果你对某个概念的研究质量有疑问，可以用 search 搜索该概念，
+帮助你判断研究结果是否准确、资料是否对口。不必每次都搜，仅在真正不确定时使用。
 
 调用 submit_review 提交审查结果。
 """
@@ -75,10 +79,11 @@ class Reviewer(Agent):
     def __init__(self, llm: LLMClient):
         super().__init__(
             llm,
-            name="Reviewer",
+            name="审稿员",
             system_prompt=REVIEWER_PROMPT,
-            max_iterations=1,
+            max_iterations=3,
         )
+        self.add_tool(SEARCH_TOOL, handler=search)
         self.add_terminal_tool(REVIEW_TOOL)
 
     def review(self, research: ResearchResult) -> ReviewResult:
